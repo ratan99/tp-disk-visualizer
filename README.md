@@ -1,5 +1,12 @@
 # tpdv — TP Disk Visualizer
 
+**[Website](https://ratan99.github.io/tp-disk-visualizer/) · [Live demo](https://ratan99.github.io/tp-disk-visualizer/demo.html) · [Install](#install)**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/treemap-dark.png">
+  <img alt="tpdv treemap of a sample home folder" src="docs/assets/treemap.png">
+</picture>
+
 A fast disk-space visualizer for macOS. It's a single CLI binary that scans
 a folder, then shows an interactive treemap in your browser. From there you
 can drill down, find the biggest files, and move things to the Trash. It
@@ -50,6 +57,11 @@ make universal      # arm64 + amd64 fat binary in bin/tpdv
 
 **✦ Clean up** in the browser, or `tpdv suggest` in the terminal, lists
 folders you can usually remove, grouped by how safe that is:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cleanup-dark.png">
+  <img alt="Clean-up suggestions grouped into Safe, Rebuildable and Review first" src="docs/assets/cleanup.png">
+</picture>
 
 | level | what | examples |
 |---|---|---|
@@ -156,6 +168,19 @@ are stubbed in `internal/app/platform_other.go`. Windows needs:
 - `disk_windows.go`
 - a `platform_windows.go` that uses the Shell API to move files to the
   Recycle Bin
+
+## Screenshots and demo
+
+The screenshots, [`docs/demo.html`](docs/demo.html) and the landing page
+images all come from a made-up home folder, so they show no real files.
+To regenerate them (needs Google Chrome; writes about 3.5 GB of filler to
+`/tmp/tpdv-demo` and deletes it afterwards):
+
+```bash
+make screenshots
+```
+
+The landing page is `docs/index.html`, served by GitHub Pages from `docs/`.
 
 ## License
 

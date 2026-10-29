@@ -236,6 +236,9 @@ const fmt = b => {
 };
 const num = n => Math.round(n).toLocaleString();
 const pct = (a, b) => b > 0 ? a / b * 100 : 0;
+const HOME = (LIVE ? CFG.home : CFG.data && CFG.data.home) || '';
+// tild shortens paths under the home folder to ~/… for display.
+const tild = p => HOME && (p === HOME || p.startsWith(HOME + '/')) ? '~' + p.slice(HOME.length) : p;
 const fmtPct = p => p >= 10 ? p.toFixed(0) + '%' : p >= 1 ? p.toFixed(1) + '%' : p > 0 ? '<1%' : '0%';
 
 // ---------- file categories ----------
@@ -517,12 +520,12 @@ function onMove() {
     el('div', 't', n.n),
     el('div', 's', `${fmt(n.s)} · ${fmtPct(pct(n.s, S.view.s))} of this folder` + (n.t === 1 ? ` · ${num(n.f || 0)} files` : n.t === 0 ? ` · ${catOf(n.e).label}` : '')),
   );
-  if (n.t <= 1) tip.append(el('div', 'p', pathOf(n)));
+  if (n.t <= 1) tip.append(el('div', 'p', tild(pathOf(n))));
   tip.style.display = 'block';
   const tw = tip.offsetWidth, th = tip.offsetHeight;
   tip.style.left = Math.min(x + 14, W - tw - 6) + 'px';
   tip.style.top = (y + 18 + th > H ? y - th - 10 : y + 18) + 'px';
-  $('#hoverpath').textContent = n.t <= 1 ? pathOf(n) : n.n;
+  $('#hoverpath').textContent = n.t <= 1 ? tild(pathOf(n)) : n.n;
 }
 ov.addEventListener('mouseleave', () => { S.hover = null; tip.style.display = 'none'; overlay(); });
 function hitEvent(e) { const b = ov.getBoundingClientRect(); return hit(e.clientX - b.left, e.clientY - b.top); }
@@ -557,14 +560,14 @@ function renderSel() {
   box.replaceChildren();
   if (!n) return;
   const kind = el('div', 'kind'); const sw = el('i'); sw.style.background = n.t === 1 ? 'var(--accent)' : colorOf(n); kind.append(sw, kindLabel(n));
-  box.append(kind, el('div', 'name', n === S.view ? S.path : n.n), el('div', 'size', fmt(n.s)));
+  box.append(kind, el('div', 'name', n === S.view ? tild(S.path) : n.n), el('div', 'size', fmt(n.s)));
   const meta = [];
   if (n !== S.view && S.view) meta.push(fmtPct(pct(n.s, S.view.s)) + ' of this folder');
   if (S.total) meta.push(fmtPct(pct(n.s, S.total)) + ' of scan');
   if (n.t !== 0 && n.f) meta.push(num(n.f) + ' files');
   if (n.x) meta.push('some contents unreadable');
   box.append(el('div', 'meta', meta.join(' · ')));
-  if (n.t <= 1 && n !== S.view) box.append(el('div', 'path', pathOf(n)));
+  if (n.t <= 1 && n !== S.view) box.append(el('div', 'path', tild(pathOf(n))));
   if (n.t === 2) box.append(el('div', 'path', `Files under ${fmt(S.info?.keepMin || 262144)} are grouped to keep scans fast. Use -min-file to change.`));
 
   const acts = el('div', 'actions');
@@ -606,7 +609,7 @@ function listRows(items, max, showPath) {
     row._n = n;
     const sw = el('i'); sw.style.background = n.t === 1 ? 'var(--accent)' : colorOf(n);
     row.append(sw, el('div', 'nm', n.n + (n.t === 1 ? '/' : '')), el('div', 'sz', fmt(n.s)));
-    if (showPath) row.append(el('div', 'sub', '‎' + n.p));
+    if (showPath) row.append(el('div', 'sub', '‎' + tild(n.p)));
     const bar = el('div', 'bar'), b = el('b');
     b.style.width = Math.max(pct(n.s, max), .5) + '%'; b.style.background = n.t === 1 ? 'var(--accent)' : colorOf(n);
     bar.append(b); row.append(bar);
@@ -648,7 +651,8 @@ function renderCrumbs() {
   const nav = $('#crumbs'); nav.replaceChildren();
   S.crumbs.forEach((c, i) => {
     if (i) nav.append(el('span', null, '›'));
-    const b = el('button', null, c.n); b.title = c.n;
+    const label = i ? c.n : tild(c.n);
+    const b = el('button', null, label); b.title = label;
     b.onclick = () => { if (i < S.crumbs.length - 1) go(c.i); };
     nav.append(b);
   });
@@ -665,7 +669,7 @@ function renderInfo(info, freed) {
   }
   $('#freed').textContent = freed ? `Freed ${fmt(freed)}` : '';
   if (!LIVE && info) {
-    const badge = el('span', 'report-badge', `Report · ${new Date(info.scannedAt).toLocaleString()} · ${info.host}`);
+    const badge = el('span', 'report-badge', `Report · ${new Date(info.scannedAt).toLocaleString()}`);
     $('#toolbar').prepend(badge);
   }
 }
@@ -701,7 +705,7 @@ async function copy(text, msg = 'Path copied') {
   toast(msg);
 }
 
-function confirmTrash(n) { return confirmDlg('Move to Trash?', `${n.n} — ${fmt(n.s)}`, pathOf(n)); }
+function confirmTrash(n) { return confirmDlg('Move to Trash?', `${n.n} — ${fmt(n.s)}`, tild(pathOf(n))); }
 function confirmDlg(title, what, det) {
   return new Promise(res => {
     $('#mTitle').textContent = title;
@@ -747,9 +751,8 @@ const SAFETY = [
   { k: 'rebuild', label: 'Rebuildable', sub: 'Recreated by reinstalling, rebuilding or re-downloading. Costs time, not data.', color: 'var(--accent)' },
   { k: 'review', label: 'Review first', sub: 'May hold things you want. Look before deleting.', color: '#d6a62a' },
 ];
-const C = { open: false, items: null, home: '', sel: new Set(), expanded: new Set() };
+const C = { open: false, items: null, sel: new Set(), expanded: new Set() };
 const sum = xs => xs.reduce((a, x) => a + x.s, 0);
-const tild = p => C.home && (p === C.home || p.startsWith(C.home + '/')) ? '~' + p.slice(C.home.length) : p;
 const canTrash = it => LIVE && !it.noTrash;
 function ago(t) {
   if (!t) return '';
@@ -767,7 +770,7 @@ async function openClean() {
   $('#clBody').replaceChildren(el('div', 'empty', 'Looking for caches and build folders…'));
   try {
     const r = await api.suggest();
-    C.items = r.items || []; C.home = r.home || '';
+    C.items = r.items || [];
     const ids = new Set(C.items.map(i => i.i));
     C.sel = new Set([...C.sel].filter(id => ids.has(id)));
     renderClean();
@@ -807,7 +810,7 @@ function renderClean() {
     chips.append(c);
   }
   body.append(chips);
-  if (root !== C.home && root !== '/') body.append(el('div', 'cl-note', 'Only this folder was checked. Scan your home folder (tpdv ~) to also find app caches, Xcode data and package-manager caches.'));
+  if (root !== HOME && root !== '/') body.append(el('div', 'cl-note', 'Only this folder was checked. Scan your home folder (tpdv ~) to also find app caches, Xcode data and package-manager caches.'));
 
   for (const lv of SAFETY) {
     const groups = groupsOf(lv.k);
@@ -935,11 +938,16 @@ addEventListener('keydown', e => {
 async function refreshStatus() {
   try { const s = await api.status(); renderInfo(s.info, s.freed); } catch {}
 }
+// loaded shows the scan root; #clean in the URL opens the Clean up view.
+async function loaded() {
+  await go(null);
+  if (location.hash === '#clean') openClean();
+}
 async function boot() {
   if (!LIVE) {
     if (!CFG.data) { $('#list').append(el('div', 'empty', 'No data.')); return; }
     renderInfo(CFG.data.info, 0);
-    return go(null);
+    return loaded();
   }
   const scanBox = $('#scan');
   let shown = false;
@@ -947,13 +955,13 @@ async function boot() {
     let s;
     try { s = await api.status(); } catch (e) { $('#scanTitle').textContent = 'Lost connection to tpdv'; $('#scanCur').textContent = e.message; scanBox.style.display = 'grid'; return; }
     if (s.error) { $('#scanTitle').textContent = 'Scan failed'; $('#scanCur').textContent = s.error; scanBox.style.display = 'grid'; return; }
-    if (!s.scanning) { scanBox.style.display = 'none'; renderInfo(s.info, s.freed); return go(null); }
+    if (!s.scanning) { scanBox.style.display = 'none'; renderInfo(s.info, s.freed); return loaded(); }
     if (!shown) { scanBox.style.display = 'grid'; shown = true; }
     const p = s.progress || {};
     $('#scanFiles').textContent = num(p.files || 0);
     $('#scanBytes').textContent = fmt(p.bytes || 0);
     $('#scanRate').textContent = p.elapsedMs ? num(p.files / (p.elapsedMs / 1000)) : '0';
-    $('#scanCur').textContent = '‎' + (p.current || '');
+    $('#scanCur').textContent = '‎' + tild(p.current || '');
     await new Promise(r => setTimeout(r, 250));
   }
 }

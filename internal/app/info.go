@@ -22,13 +22,11 @@ type Info struct {
 	ScannedAt  time.Time `json:"scannedAt"`
 	DiskTotal  uint64    `json:"diskTotal"`
 	DiskFree   uint64    `json:"diskFree"`
-	Host       string    `json:"host"`
 	Version    string    `json:"version"`
 	KeepMin    int64     `json:"keepMin"`
 }
 
 func NewInfo(res *scan.Result, opts scan.Options, version string) *Info {
-	host, _ := os.Hostname()
 	total, free := diskUsage(res.Root.Name)
 	return &Info{
 		Root:       res.Root.Name,
@@ -40,7 +38,6 @@ func NewInfo(res *scan.Result, opts scan.Options, version string) *Info {
 		ScannedAt:  time.Now(),
 		DiskTotal:  total,
 		DiskFree:   free,
-		Host:       host,
 		Version:    version,
 		KeepMin:    opts.KeepMin,
 	}

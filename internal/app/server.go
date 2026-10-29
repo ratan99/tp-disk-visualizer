@@ -154,7 +154,8 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Open the URL printed in the terminal (it contains an access token).", http.StatusForbidden)
 		return
 	}
-	page, err := renderPage(map[string]any{"mode": "live", "token": s.token, "version": s.version})
+	home, _ := os.UserHomeDir()
+	page, err := renderPage(map[string]any{"mode": "live", "token": s.token, "version": s.version, "home": home})
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return

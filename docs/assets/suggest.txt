@@ -1,0 +1,111 @@
+  Clean-up suggestions  up to 4.12 GB in 29 items (nothing has been deleted)
+
+  1.04 GB  Safe to delete — caches and build output, recreated automatically
+
+       267 MB  App caches (3)
+               Apps rebuild their caches. Quit the app first for best results.
+         147 MB  ~/Library/Caches/com.spotify.client
+        89.1 MB  ~/Library/Caches/Google
+        31.5 MB  ~/Library/Caches/com.apple.Safari
+
+       241 MB  Xcode DerivedData
+               Build products and indexes. Xcode rebuilds them on the next build.
+         241 MB  ~/Library/Developer/Xcode/DerivedData
+
+       127 MB  JS framework build caches
+               Build output and caches (.next, .turbo, .parcel-cache, …). Regenerated on the next build or dev run.
+         127 MB  ~/Projects/acme-web/.next
+
+       115 MB  Homebrew downloads
+               Bottles and installers already installed.
+               run: brew cleanup --prune=all
+         115 MB  ~/Library/Caches/Homebrew
+
+      78.6 MB  npm cache
+               Downloaded packages. npm fetches them again when needed.
+               run: npm cache clean --force
+        78.6 MB  ~/.npm/_cacache
+
+      73.4 MB  Go build cache
+               Compiled packages, rebuilt on the next go build.
+               run: go clean -cache
+        73.4 MB  ~/Library/Caches/go-build
+
+      62.9 MB  Slack cache
+               Downloaded media and web cache. Quit Slack first.
+        62.9 MB  ~/Library/Application Support/Slack/Cache
+
+      47.2 MB  pip cache
+               Downloaded wheels. pip fetches them again when needed.
+               run: pip cache purge
+        47.2 MB  ~/Library/Caches/pip
+
+      21.0 MB  Log files
+               Diagnostic logs. Apps start new ones as needed.
+        21.0 MB  ~/Library/Logs/DiagnosticReports
+
+      2.83 MB  Python caches
+               Bytecode and tool caches. Python and the tools recreate them automatically.
+        2.83 MB  ~/Projects/ml-experiments/src/__pycache__
+
+  1.55 GB  Rebuildable — recreated by reinstalling, rebuilding or re-downloading
+
+       464 MB  node_modules (3)
+               JavaScript dependencies. Reinstall any time with npm / yarn / pnpm install.
+         232 MB  ~/Projects/acme-web/node_modules
+         153 MB  ~/Projects/mobile-app/node_modules
+        79.3 MB  ~/Projects/old-landing-page/node_modules
+
+       288 MB  Python virtualenvs
+               Isolated Python installs. Recreate with python -m venv .venv and pip install -r requirements.txt.
+         288 MB  ~/Projects/ml-experiments/.venv
+
+       220 MB  Terraform providers
+               Downloaded providers and modules (often 500 MB+ each). terraform init downloads them again.
+               run: terraform init
+         220 MB  ~/Projects/infra/.terraform
+
+       210 MB  Hugging Face models
+               Downloaded models and datasets. Re-downloaded when a script uses them.
+         210 MB  ~/.cache/huggingface
+
+       187 MB  Rust build output
+               Compiled artifacts in target/. Rebuilt by cargo build.
+               run: cargo clean
+         187 MB  ~/Projects/rust-cli/target
+
+       126 MB  CocoaPods
+               iOS dependencies in Pods/. Restored by pod install.
+               run: pod install
+         126 MB  ~/Projects/mobile-app/ios/Pods
+
+      57.7 MB  User caches (~/.cache)
+               Tool caches. Each tool re-creates or re-downloads what it needs.
+        57.7 MB  ~/.cache/puppeteer
+
+  1.53 GB  Review first — may hold things you want
+
+       687 MB  Installers & archives in Downloads (3)
+               Usually not needed after installing or extracting.
+         398 MB  ~/Downloads/Xcode_16.2.xip
+         189 MB  ~/Downloads/Docker.dmg
+        99.6 MB  ~/Downloads/ollama-darwin.zip
+
+       545 MB  Docker data
+               Docker images, containers and volumes. Prune unused ones from Docker; deleting the folder resets Docker.
+               run: docker system prune -a --volumes
+         545 MB  ~/Library/Containers/com.docker.docker
+
+       204 MB  Node versions (nvm) (3)
+               Installed Node.js versions. Remove unused ones with nvm uninstall <version>.
+               run: nvm ls
+        73.4 MB  ~/.nvm/versions/node/v22.11.0
+        68.2 MB  ~/.nvm/versions/node/v20.18.0
+        62.9 MB  ~/.nvm/versions/node/v18.20.4
+
+      94.4 MB  Xcode archives
+               App builds you archived. Keep the releases you need for crash symbolication.
+        94.4 MB  ~/Library/Developer/Xcode/Archives
+
+  To review and move items to the Trash, open the browser UI: tpdv ~
+

@@ -1,0 +1,972 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TP Disk Visualizer</title>
+<style>
+:root {
+  --bg: #0c0f13; --panel: #12161c; --panel-2: #181d25; --line: #232a34; --line-2: #2d3541;
+  --text: #e7eaef; --muted: #8b95a5; --dim: #5f6876; --accent: #5b9bff; --accent-soft: rgba(91,155,255,.14);
+  --danger: #f2655f; --danger-soft: rgba(242,101,95,.13); --ok: #3fb984;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f6f7f9; --line: #e2e5ea; --line-2: #d3d8df;
+    --text: #1a1e24; --muted: #5d6675; --dim: #8b93a0; --accent: #2f6fe0; --accent-soft: rgba(47,111,224,.1);
+    --danger: #d64541; --danger-soft: rgba(214,69,65,.09); color-scheme: light;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 13px/1.4 var(--font); display: flex; flex-direction: column; overflow: hidden; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; }
+
+header { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel); min-height: 52px; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; }
+.brand i { width: 18px; height: 18px; border-radius: 5px; background: conic-gradient(from 200deg, #e5534b, #ec8a3c, #d6a62a, #3fb984, #4c9be8, #8a63f2, #e5534b); display: inline-block; }
+.brand small { font-weight: 500; color: var(--dim); }
+.crumbs { flex: 1; display: flex; align-items: center; min-width: 0; overflow: hidden; gap: 2px; }
+.crumbs button { border: 0; background: none; padding: 4px 6px; border-radius: 6px; cursor: pointer; color: var(--muted); white-space: nowrap; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.crumbs button:hover { background: var(--panel-2); color: var(--text); }
+.crumbs button:last-child { color: var(--text); font-weight: 600; }
+.crumbs span { color: var(--dim); }
+.disk { display: flex; flex-direction: column; gap: 4px; min-width: 190px; font-size: 11.5px; color: var(--muted); }
+.disk .meter { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.disk .meter b { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), #8a63f2); }
+.freed { color: var(--ok); font-weight: 600; font-size: 12px; white-space: nowrap; }
+.tb { display: flex; gap: 6px; }
+.btn { border: 1px solid var(--line-2); background: var(--panel-2); padding: 5px 10px; border-radius: 7px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { border-color: var(--dim); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line-2)); background: var(--danger-soft); }
+.btn.danger:hover { border-color: var(--danger); }
+.btn.solid-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+
+main { flex: 1; display: flex; min-height: 0; }
+#mapwrap { flex: 1; position: relative; min-width: 0; margin: 8px 0 8px 8px; border-radius: 8px; overflow: hidden; background: var(--panel); }
+#mapwrap canvas { position: absolute; inset: 0; }
+#ov { cursor: pointer; }
+#tip { position: absolute; pointer-events: none; z-index: 5; background: rgba(12,15,19,.94); color: #e7eaef; border: 1px solid #2d3541; border-radius: 8px; padding: 8px 10px; max-width: 360px; font-size: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.35); display: none; }
+#tip .t { font-weight: 600; word-break: break-all; }
+#tip .s { color: #9aa4b4; margin-top: 2px; }
+#tip .p { color: #6f7887; font-family: var(--mono); font-size: 11px; margin-top: 4px; word-break: break-all; }
+
+aside { width: 360px; display: flex; flex-direction: column; min-height: 0; padding: 8px; gap: 8px; }
+.card { background: var(--panel); border-radius: 8px; border: 1px solid var(--line); }
+#sel { padding: 14px; }
+#sel .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); display: flex; align-items: center; gap: 6px; }
+#sel .kind i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+#sel .name { font-size: 15px; font-weight: 650; margin-top: 6px; word-break: break-word; }
+#sel .size { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+#sel .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+#sel .path { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 8px; word-break: break-all; }
+#sel .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+#panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.tabs { display: flex; gap: 2px; padding: 6px; border-bottom: 1px solid var(--line); }
+.tabs button { flex: 1; border: 0; background: none; padding: 6px; border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: 550; }
+.tabs button.on { background: var(--panel-2); color: var(--text); }
+#list { flex: 1; overflow: auto; padding: 4px; }
+.row { display: grid; grid-template-columns: 10px 1fr auto; gap: 4px 9px; align-items: center; padding: 6px 8px; border-radius: 6px; cursor: default; }
+.row:hover { background: var(--panel-2); }
+.row.on { background: var(--accent-soft); }
+.row i { width: 10px; height: 10px; border-radius: 3px; }
+.row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .sz { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+.row .sub { grid-column: 2 / 4; font-family: var(--mono); font-size: 10.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.row .bar { grid-column: 2 / 4; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.row .bar b { display: block; height: 100%; border-radius: 2px; }
+.empty { color: var(--dim); padding: 20px; text-align: center; }
+.stack { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin: 10px 8px 6px; gap: 1px; }
+.section { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); padding: 12px 8px 4px; }
+
+footer { display: flex; gap: 16px; padding: 0 14px 8px; color: var(--dim); font-size: 11.5px; }
+footer #hoverpath { flex: 1; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#scan { position: absolute; inset: 0; display: grid; place-items: center; z-index: 6; background: var(--panel); }
+#scan .box { width: min(460px, 90%); text-align: center; }
+#scan h2 { margin: 0 0 4px; font-size: 18px; font-weight: 650; }
+#scan .where { font-family: var(--mono); color: var(--muted); font-size: 12px; word-break: break-all; }
+#scan .nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 22px 0 16px; }
+#scan .nums div { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+#scan .nums b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+#scan .nums span { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+#scan .cur { font-family: var(--mono); font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; }
+#scan .track { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 14px; }
+#scan .track b { display: block; width: 30%; height: 100%; background: var(--accent); animation: slide 1.1s ease-in-out infinite; }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+
+#menu { position: fixed; z-index: 20; background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px; padding: 4px; min-width: 190px; box-shadow: 0 10px 30px rgba(0,0,0,.3); display: none; }
+#menu button { display: flex; width: 100%; border: 0; background: none; padding: 7px 10px; border-radius: 5px; text-align: left; cursor: pointer; justify-content: space-between; }
+#menu button:hover { background: var(--accent-soft); }
+#menu button.danger { color: var(--danger); }
+#menu button kbd { color: var(--dim); font: 11px var(--font); }
+#menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+
+#modal { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.45); display: none; place-items: center; }
+#modal .dlg { background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 20px; width: min(440px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+#modal h3 { margin: 0 0 10px; font-size: 15px; }
+#modal .what { font-weight: 600; word-break: break-word; }
+#modal .det { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 6px; word-break: break-all; white-space: pre-wrap; max-height: 40vh; overflow: auto; }
+#modal .row2 { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+#toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 40; background: var(--panel); border: 1px solid var(--line-2); padding: 9px 14px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.3); display: none; max-width: 80vw; }
+#toast.err { border-color: var(--danger); color: var(--danger); }
+.btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; cursor: pointer; }
+
+#clean { position: absolute; inset: 0; z-index: 4; background: var(--panel); display: none; flex-direction: column; }
+#clBody { flex: 1; overflow: auto; padding: 20px 24px 28px; }
+.cl-title { font-size: 20px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+.cl-sub { color: var(--muted); margin-top: 4px; }
+.chips { display: flex; gap: 8px; margin: 16px 0 4px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 8px; padding: 8px 12px; cursor: pointer; text-align: left; min-width: 150px; }
+.chip:hover { border-color: var(--dim); }
+.chip b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+.chip span { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.cl-note { color: var(--dim); font-size: 12px; margin-top: 10px; }
+.cl-sec { margin-top: 26px; }
+.cl-sec h3 { margin: 0; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.cl-sec h3 small { color: var(--muted); font-weight: 500; font-size: 13px; }
+.cl-sec > p { margin: 3px 0 10px 16px; color: var(--muted); font-size: 12px; }
+.grp { border: 1px solid var(--line); border-radius: 8px; margin-top: 8px; overflow: hidden; }
+.grp-h { display: grid; grid-template-columns: 18px 1fr auto 14px; align-items: center; gap: 12px; padding: 10px 12px; cursor: pointer; }
+.grp-h:hover { background: var(--panel-2); }
+.grp-h .t { font-weight: 600; min-width: 0; }
+.grp-h .t small { color: var(--dim); font-weight: 500; margin-left: 4px; }
+.grp-h .sz { font-variant-numeric: tabular-nums; font-weight: 650; }
+.grp-h .chev { color: var(--dim); transition: transform .15s; }
+.grp.open .chev { transform: rotate(90deg); }
+.grp-why { padding: 0 12px 10px 42px; color: var(--muted); font-size: 12px; }
+.cmd { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-family: var(--mono); font-size: 11.5px; background: var(--panel-2); border: 1px solid var(--line); padding: 3px 4px 3px 8px; border-radius: 6px; color: var(--text); max-width: 100%; }
+.cmd span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lnk { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 2px 5px; font-size: 12px; border-radius: 4px; white-space: nowrap; }
+.lnk:hover { background: var(--accent-soft); }
+.items { border-top: 1px solid var(--line); padding: 4px 0; }
+.it { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 5px 12px; }
+.it:hover { background: var(--panel-2); }
+.it .pth { font-family: var(--mono); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.it .m { color: var(--dim); font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.it .m b { color: var(--text); font-weight: 600; }
+.it .acts { display: flex; gap: 2px; }
+.tag { font-size: 10px; color: var(--dim); border: 1px solid var(--line-2); border-radius: 4px; padding: 0 4px; justify-self: center; }
+.more { padding: 4px 12px 8px 38px; }
+.cl-bar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+.cl-bar .cnt { flex: 1; color: var(--muted); min-width: 160px; }
+.cl-bar .cnt b { color: var(--text); }
+.report-badge { font-size: 11px; color: var(--muted); border: 1px solid var(--line-2); padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
+
+@media (max-width: 860px) {
+  main { flex-direction: column; }
+  #mapwrap { margin: 8px 8px 0; min-height: 55vh; }
+  aside { width: auto; }
+  .disk { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><i></i>TP Disk Visualizer</div>
+  <nav class="crumbs" id="crumbs"></nav>
+  <span class="freed" id="freed"></span>
+  <div class="disk" id="disk"></div>
+  <div class="tb" id="toolbar">
+    <button class="btn" id="cleanBtn" title="Caches and build folders you can safely remove">✦ Clean up</button>
+    <button class="btn" id="upBtn" title="Up one level (Backspace)">↑ Up</button>
+    <button class="btn live" id="rescanBtn" title="Rescan this folder">↻ Rescan</button>
+    <button class="btn live" id="reportBtn" title="Download an HTML report">⇩ Report</button>
+  </div>
+</header>
+<main>
+  <section id="mapwrap">
+    <canvas id="map"></canvas>
+    <canvas id="ov"></canvas>
+    <div id="tip"></div>
+    <div id="scan" style="display:none">
+      <div class="box">
+        <h2 id="scanTitle">Scanning…</h2>
+        <div class="where" id="scanRoot"></div>
+        <div class="nums">
+          <div><b id="scanFiles">0</b><span>files</span></div>
+          <div><b id="scanBytes">0 B</b><span>size</span></div>
+          <div><b id="scanRate">0</b><span>files / s</span></div>
+        </div>
+        <div class="cur" id="scanCur"></div>
+        <div class="track"><b></b></div>
+      </div>
+    </div>
+    <div id="clean"><div id="clBody"></div><div class="cl-bar" id="clBar"></div></div>
+  </section>
+  <aside>
+    <div class="card" id="sel"></div>
+    <div class="card" id="panel">
+      <div class="tabs">
+        <button data-tab="contents" class="on">Contents</button>
+        <button data-tab="top">Largest files</button>
+        <button data-tab="types">File types</button>
+      </div>
+      <div id="list"></div>
+    </div>
+  </aside>
+</main>
+<footer><span id="hoverpath"></span><span id="hint">Click to select · Double-click to zoom · Backspace to go up · Right-click for actions</span></footer>
+<div id="menu"></div>
+<div id="modal"><div class="dlg"><h3 id="mTitle"></h3><div class="what" id="mWhat"></div><div class="det" id="mDet"></div><div class="row2"><button class="btn" id="mNo">Cancel</button><button class="btn solid-danger" id="mYes">Move to Trash</button></div></div></div>
+<div id="toast"></div>
+
+<script>window.TPDV = {"data":{"info":{"root":"/private/tmp/tpdv-demo/alex","total":5835870208,"files":3292,"dirs":358,"errors":0,"durationMs":9,"scannedAt":"2026-10-29T19:10:21.716075+05:30","diskTotal":1000000000000,"diskFree":412000000000,"version":"0.1.0","keepMin":262144},"tree":{"i":0,"n":"/private/tmp/tpdv-demo/alex","s":5835870208,"f":3292,"t":1,"k":[{"i":1,"n":"Projects","s":1907970048,"f":3077,"t":1,"k":[{"i":2,"n":"ml-experiments","s":777220096,"f":48,"t":1,"k":[{"i":3,"n":".venv","s":288362496,"f":3,"t":1,"k":[{"i":4,"n":"lib","s":288358400,"f":2,"t":1,"k":[{"i":5,"n":"python3.12","s":288358400,"f":2,"t":1,"k":[{"i":6,"n":"site-packages","s":288358400,"f":2,"t":1,"k":[{"i":7,"n":"torch","s":251658240,"f":1,"t":1,"k":[{"i":8,"n":"lib","s":251658240,"f":1,"t":1,"k":[{"i":9,"n":"libtorch_cpu.dylib","s":251658240,"f":1,"t":0,"e":"dylib"}]}]},{"i":10,"n":"numpy","s":36700160,"f":1,"t":1,"k":[{"i":11,"n":"core.so","s":36700160,"f":1,"t":0,"e":"so"}]}]}]}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":12,"n":"models","s":251658240,"f":1,"t":1,"k":[{"i":13,"n":"checkpoint-final.safetensors","s":251658240,"f":1,"t":0,"e":"safetensors"}]},{"i":14,"n":"data","s":230686720,"f":2,"t":1,"k":[{"i":15,"n":"train.parquet","s":188743680,"f":1,"t":0,"e":"parquet"},{"i":16,"n":"eval.parquet","s":41943040,"f":1,"t":0,"e":"parquet"}]},{"i":17,"n":"notebooks","s":3686400,"f":12,"t":1,"k":[{"i":18,"n":"exp-000.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"},{"i":19,"n":"exp-002.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"},{"i":20,"n":"exp-006.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"},{"i":21,"n":"exp-004.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"},{"i":22,"n":"exp-003.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"},{"i":23,"n":"exp-001.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"},{"i":24,"n":"exp-005.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"},{"i":25,"n":"exp-007.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"},{"i":26,"n":"exp-010.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"},{"i":27,"n":"exp-009.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"},{"i":28,"n":"exp-011.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"},{"i":29,"n":"exp-008.ipynb","s":307200,"f":1,"t":0,"e":"ipynb"}]},{"i":30,"n":"src","s":2826240,"f":30,"t":1,"k":[{"i":31,"n":"__pycache__","s":2826240,"f":30,"t":1,"k":[{"i":-1,"n":"30 small files","s":2826240,"f":30,"t":2,"e":"pyc"}]}]}]},{"i":32,"n":"acme-web","s":360861696,"f":1155,"t":1,"k":[{"i":33,"n":"node_modules","s":232407040,"f":904,"t":1,"k":[{"i":34,"n":"@next","s":125829120,"f":1,"t":1,"k":[{"i":35,"n":"swc-darwin-arm64","s":125829120,"f":1,"t":1,"k":[{"i":36,"n":"bin","s":125829120,"f":1,"t":1,"k":[{"i":37,"n":"binary.node","s":125829120,"f":1,"t":0,"e":"node"}]}]}]},{"i":38,"n":"sharp","s":31457280,"f":1,"t":1,"k":[{"i":39,"n":"bin","s":31457280,"f":1,"t":1,"k":[{"i":40,"n":"binary.node","s":31457280,"f":1,"t":0,"e":"node"}]}]},{"i":41,"n":"typescript","s":23068672,"f":1,"t":1,"k":[{"i":42,"n":"bin","s":23068672,"f":1,"t":1,"k":[{"i":43,"n":"binary.node","s":23068672,"f":1,"t":0,"e":"node"}]}]},{"i":44,"n":"esbuild","s":9437184,"f":1,"t":1,"k":[{"i":45,"n":"bin","s":9437184,"f":1,"t":1,"k":[{"i":46,"n":"binary.node","s":9437184,"f":1,"t":0,"e":"node"}]}]},{"i":47,"n":"pkg-07","s":1183744,"f":25,"t":1,"k":[{"i":48,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":49,"n":"pkg-22","s":1183744,"f":25,"t":1,"k":[{"i":50,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":51,"n":"pkg-16","s":1183744,"f":25,"t":1,"k":[{"i":52,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":53,"n":"pkg-29","s":1183744,"f":25,"t":1,"k":[{"i":54,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":55,"n":"pkg-14","s":1183744,"f":25,"t":1,"k":[{"i":56,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":57,"n":"pkg-00","s":1183744,"f":25,"t":1,"k":[{"i":58,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":59,"n":"pkg-23","s":1183744,"f":25,"t":1,"k":[{"i":60,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":61,"n":"pkg-31","s":1183744,"f":25,"t":1,"k":[{"i":62,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":63,"n":"pkg-09","s":1183744,"f":25,"t":1,"k":[{"i":64,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":65,"n":"pkg-08","s":1183744,"f":25,"t":1,"k":[{"i":66,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":67,"n":"pkg-30","s":1183744,"f":25,"t":1,"k":[{"i":68,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":69,"n":"pkg-06","s":1183744,"f":25,"t":1,"k":[{"i":70,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":71,"n":"pkg-01","s":1183744,"f":25,"t":1,"k":[{"i":72,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":73,"n":"pkg-27","s":1183744,"f":25,"t":1,"k":[{"i":74,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":75,"n":"pkg-18","s":1183744,"f":25,"t":1,"k":[{"i":76,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":77,"n":"pkg-20","s":1183744,"f":25,"t":1,"k":[{"i":78,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":79,"n":"pkg-25","s":1183744,"f":25,"t":1,"k":[{"i":80,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":81,"n":"pkg-11","s":1183744,"f":25,"t":1,"k":[{"i":82,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":83,"n":"pkg-13","s":1183744,"f":25,"t":1,"k":[{"i":84,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":85,"n":"pkg-10","s":1183744,"f":25,"t":1,"k":[{"i":86,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":87,"n":"pkg-17","s":1183744,"f":25,"t":1,"k":[{"i":88,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":89,"n":"pkg-28","s":1183744,"f":25,"t":1,"k":[{"i":90,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":91,"n":"pkg-21","s":1183744,"f":25,"t":1,"k":[{"i":92,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":93,"n":"pkg-26","s":1183744,"f":25,"t":1,"k":[{"i":94,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":95,"n":"pkg-19","s":1183744,"f":25,"t":1,"k":[{"i":96,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":97,"n":"pkg-15","s":1183744,"f":25,"t":1,"k":[{"i":98,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":99,"n":"pkg-12","s":1183744,"f":25,"t":1,"k":[{"i":100,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":101,"n":"pkg-04","s":1183744,"f":25,"t":1,"k":[{"i":102,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":103,"n":"pkg-03","s":1183744,"f":25,"t":1,"k":[{"i":104,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":105,"n":"pkg-35","s":1183744,"f":25,"t":1,"k":[{"i":106,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":107,"n":"pkg-32","s":1183744,"f":25,"t":1,"k":[{"i":108,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":109,"n":"pkg-24","s":1183744,"f":25,"t":1,"k":[{"i":110,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":111,"n":"pkg-33","s":1183744,"f":25,"t":1,"k":[{"i":112,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":113,"n":"pkg-34","s":1183744,"f":25,"t":1,"k":[{"i":114,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":115,"n":"pkg-02","s":1183744,"f":25,"t":1,"k":[{"i":116,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":117,"n":"pkg-05","s":1183744,"f":25,"t":1,"k":[{"i":118,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]}]},{"i":119,"n":".next","s":127139840,"f":90,"t":1,"k":[{"i":120,"n":"cache","s":125829120,"f":10,"t":1,"k":[{"i":121,"n":"webpack","s":125829120,"f":10,"t":1,"k":[{"i":122,"n":"client-7.pack","s":12582912,"f":1,"t":0,"e":"pack"},{"i":123,"n":"client-6.pack","s":12582912,"f":1,"t":0,"e":"pack"},{"i":124,"n":"client-1.pack","s":12582912,"f":1,"t":0,"e":"pack"},{"i":125,"n":"client-0.pack","s":12582912,"f":1,"t":0,"e":"pack"},{"i":126,"n":"client-3.pack","s":12582912,"f":1,"t":0,"e":"pack"},{"i":127,"n":"client-2.pack","s":12582912,"f":1,"t":0,"e":"pack"},{"i":128,"n":"client-5.pack","s":12582912,"f":1,"t":0,"e":"pack"},{"i":129,"n":"client-9.pack","s":12582912,"f":1,"t":0,"e":"pack"},{"i":130,"n":"client-8.pack","s":12582912,"f":1,"t":0,"e":"pack"},{"i":131,"n":"client-4.pack","s":12582912,"f":1,"t":0,"e":"pack"}]}]},{"i":132,"n":"server","s":1310720,"f":80,"t":1,"k":[{"i":-1,"n":"80 small files","s":1310720,"f":80,"t":2,"e":"js"}]}]},{"i":133,"n":"src","s":1310720,"f":160,"t":1,"k":[{"i":134,"n":"components","s":1310720,"f":160,"t":1,"k":[{"i":-1,"n":"160 small files","s":1310720,"f":160,"t":2,"e":"tsx"}]}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":135,"n":"mobile-app","s":278552576,"f":906,"t":1,"k":[{"i":136,"n":"node_modules","s":152715264,"f":902,"t":1,"k":[{"i":137,"n":"react-native","s":62914560,"f":1,"t":1,"k":[{"i":138,"n":"bin","s":62914560,"f":1,"t":1,"k":[{"i":139,"n":"binary.node","s":62914560,"f":1,"t":0,"e":"node"}]}]},{"i":140,"n":"hermes-engine","s":47185920,"f":1,"t":1,"k":[{"i":141,"n":"bin","s":47185920,"f":1,"t":1,"k":[{"i":142,"n":"binary.node","s":47185920,"f":1,"t":0,"e":"node"}]}]},{"i":143,"n":"pkg-18","s":1183744,"f":25,"t":1,"k":[{"i":144,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":145,"n":"pkg-13","s":1183744,"f":25,"t":1,"k":[{"i":146,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":147,"n":"pkg-23","s":1183744,"f":25,"t":1,"k":[{"i":148,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":149,"n":"pkg-20","s":1183744,"f":25,"t":1,"k":[{"i":150,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":151,"n":"pkg-25","s":1183744,"f":25,"t":1,"k":[{"i":152,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":153,"n":"pkg-22","s":1183744,"f":25,"t":1,"k":[{"i":154,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":155,"n":"pkg-12","s":1183744,"f":25,"t":1,"k":[{"i":156,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":157,"n":"pkg-00","s":1183744,"f":25,"t":1,"k":[{"i":158,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":159,"n":"pkg-07","s":1183744,"f":25,"t":1,"k":[{"i":160,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":161,"n":"pkg-31","s":1183744,"f":25,"t":1,"k":[{"i":162,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":163,"n":"pkg-09","s":1183744,"f":25,"t":1,"k":[{"i":164,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":165,"n":"pkg-08","s":1183744,"f":25,"t":1,"k":[{"i":166,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":167,"n":"pkg-30","s":1183744,"f":25,"t":1,"k":[{"i":168,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":169,"n":"pkg-06","s":1183744,"f":25,"t":1,"k":[{"i":170,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":171,"n":"pkg-01","s":1183744,"f":25,"t":1,"k":[{"i":172,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":173,"n":"pkg-27","s":1183744,"f":25,"t":1,"k":[{"i":174,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":175,"n":"pkg-14","s":1183744,"f":25,"t":1,"k":[{"i":176,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":177,"n":"pkg-16","s":1183744,"f":25,"t":1,"k":[{"i":178,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":179,"n":"pkg-15","s":1183744,"f":25,"t":1,"k":[{"i":180,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":181,"n":"pkg-29","s":1183744,"f":25,"t":1,"k":[{"i":182,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":183,"n":"pkg-11","s":1183744,"f":25,"t":1,"k":[{"i":184,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":185,"n":"pkg-10","s":1183744,"f":25,"t":1,"k":[{"i":186,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":187,"n":"pkg-17","s":1183744,"f":25,"t":1,"k":[{"i":188,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":189,"n":"pkg-28","s":1183744,"f":25,"t":1,"k":[{"i":190,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":191,"n":"pkg-21","s":1183744,"f":25,"t":1,"k":[{"i":192,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":193,"n":"pkg-26","s":1183744,"f":25,"t":1,"k":[{"i":194,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":195,"n":"pkg-19","s":1183744,"f":25,"t":1,"k":[{"i":196,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":197,"n":"pkg-24","s":1183744,"f":25,"t":1,"k":[{"i":198,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":199,"n":"pkg-04","s":1183744,"f":25,"t":1,"k":[{"i":200,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":201,"n":"pkg-03","s":1183744,"f":25,"t":1,"k":[{"i":202,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":203,"n":"pkg-35","s":1183744,"f":25,"t":1,"k":[{"i":204,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":205,"n":"pkg-32","s":1183744,"f":25,"t":1,"k":[{"i":206,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":207,"n":"pkg-33","s":1183744,"f":25,"t":1,"k":[{"i":208,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":209,"n":"pkg-34","s":1183744,"f":25,"t":1,"k":[{"i":210,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":211,"n":"pkg-02","s":1183744,"f":25,"t":1,"k":[{"i":212,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":213,"n":"pkg-05","s":1183744,"f":25,"t":1,"k":[{"i":214,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]}]},{"i":215,"n":"ios","s":125833216,"f":3,"t":1,"k":[{"i":216,"n":"Pods","s":125829120,"f":2,"t":1,"k":[{"i":217,"n":"Firebase","s":89128960,"f":1,"t":1,"k":[{"i":218,"n":"Firebase.xcframework","s":89128960,"f":1,"t":1,"k":[{"i":219,"n":"binary","s":89128960,"f":1,"t":0}]}]},{"i":220,"n":"GoogleMaps","s":36700160,"f":1,"t":1,"k":[{"i":221,"n":"GoogleMaps.framework","s":36700160,"f":1,"t":1,"k":[{"i":222,"n":"binary","s":36700160,"f":1,"t":0}]}]}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":223,"n":"infra","s":220205056,"f":2,"t":1,"k":[{"i":224,"n":".terraform","s":220200960,"f":1,"t":1,"k":[{"i":225,"n":"providers","s":220200960,"f":1,"t":1,"k":[{"i":226,"n":"registry.terraform.io","s":220200960,"f":1,"t":1,"k":[{"i":227,"n":"hashicorp","s":220200960,"f":1,"t":1,"k":[{"i":228,"n":"aws","s":220200960,"f":1,"t":1,"k":[{"i":229,"n":"terraform-provider-aws","s":220200960,"f":1,"t":0}]}]}]}]}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":230,"n":"rust-cli","s":186896384,"f":24,"t":1,"k":[{"i":231,"n":"target","s":186646528,"f":3,"t":1,"k":[{"i":232,"n":"debug","s":167772160,"f":2,"t":1,"k":[{"i":233,"n":"deps","s":125829120,"f":1,"t":1,"k":[{"i":234,"n":"librust_cli.rlib","s":125829120,"f":1,"t":0,"e":"rlib"}]},{"i":235,"n":"rust-cli","s":41943040,"f":1,"t":0}]},{"i":236,"n":"release","s":18874368,"f":1,"t":1,"k":[{"i":237,"n":"rust-cli","s":18874368,"f":1,"t":0}]}]},{"i":238,"n":"src","s":245760,"f":20,"t":1,"k":[{"i":-1,"n":"20 small files","s":245760,"f":20,"t":2,"e":"rs"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":239,"n":"old-landing-page","s":84234240,"f":942,"t":1,"k":[{"i":240,"n":"node_modules","s":79314944,"f":901,"t":1,"k":[{"i":241,"n":"gatsby","s":36700160,"f":1,"t":1,"k":[{"i":242,"n":"bin","s":36700160,"f":1,"t":1,"k":[{"i":243,"n":"binary.node","s":36700160,"f":1,"t":0,"e":"node"}]}]},{"i":244,"n":"pkg-18","s":1183744,"f":25,"t":1,"k":[{"i":245,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":246,"n":"pkg-14","s":1183744,"f":25,"t":1,"k":[{"i":247,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":248,"n":"pkg-27","s":1183744,"f":25,"t":1,"k":[{"i":249,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":250,"n":"pkg-23","s":1183744,"f":25,"t":1,"k":[{"i":251,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":252,"n":"pkg-13","s":1183744,"f":25,"t":1,"k":[{"i":253,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":254,"n":"pkg-25","s":1183744,"f":25,"t":1,"k":[{"i":255,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":256,"n":"pkg-22","s":1183744,"f":25,"t":1,"k":[{"i":257,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":258,"n":"pkg-00","s":1183744,"f":25,"t":1,"k":[{"i":259,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":260,"n":"pkg-07","s":1183744,"f":25,"t":1,"k":[{"i":261,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":262,"n":"pkg-31","s":1183744,"f":25,"t":1,"k":[{"i":263,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":264,"n":"pkg-09","s":1183744,"f":25,"t":1,"k":[{"i":265,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":266,"n":"pkg-08","s":1183744,"f":25,"t":1,"k":[{"i":267,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":268,"n":"pkg-30","s":1183744,"f":25,"t":1,"k":[{"i":269,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":270,"n":"pkg-06","s":1183744,"f":25,"t":1,"k":[{"i":271,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":272,"n":"pkg-01","s":1183744,"f":25,"t":1,"k":[{"i":273,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":274,"n":"pkg-24","s":1183744,"f":25,"t":1,"k":[{"i":275,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":276,"n":"pkg-15","s":1183744,"f":25,"t":1,"k":[{"i":277,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":278,"n":"pkg-20","s":1183744,"f":25,"t":1,"k":[{"i":279,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":280,"n":"pkg-12","s":1183744,"f":25,"t":1,"k":[{"i":281,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":282,"n":"pkg-16","s":1183744,"f":25,"t":1,"k":[{"i":283,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":284,"n":"pkg-29","s":1183744,"f":25,"t":1,"k":[{"i":285,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":286,"n":"pkg-11","s":1183744,"f":25,"t":1,"k":[{"i":287,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":288,"n":"pkg-10","s":1183744,"f":25,"t":1,"k":[{"i":289,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":290,"n":"pkg-17","s":1183744,"f":25,"t":1,"k":[{"i":291,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":292,"n":"pkg-28","s":1183744,"f":25,"t":1,"k":[{"i":293,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":294,"n":"pkg-21","s":1183744,"f":25,"t":1,"k":[{"i":295,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":296,"n":"pkg-26","s":1183744,"f":25,"t":1,"k":[{"i":297,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":298,"n":"pkg-19","s":1183744,"f":25,"t":1,"k":[{"i":299,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":300,"n":"pkg-04","s":1183744,"f":25,"t":1,"k":[{"i":301,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":302,"n":"pkg-03","s":1183744,"f":25,"t":1,"k":[{"i":303,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":304,"n":"pkg-35","s":1183744,"f":25,"t":1,"k":[{"i":305,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":306,"n":"pkg-32","s":1183744,"f":25,"t":1,"k":[{"i":307,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":308,"n":"pkg-33","s":1183744,"f":25,"t":1,"k":[{"i":309,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":310,"n":"pkg-34","s":1183744,"f":25,"t":1,"k":[{"i":311,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":312,"n":"pkg-02","s":1183744,"f":25,"t":1,"k":[{"i":313,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]},{"i":314,"n":"pkg-05","s":1183744,"f":25,"t":1,"k":[{"i":315,"n":"dist","s":1179648,"f":24,"t":1,"k":[{"i":-1,"n":"24 small files","s":1179648,"f":24,"t":2,"e":"js"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]}]},{"i":316,"n":"public","s":4915200,"f":40,"t":1,"k":[{"i":-1,"n":"40 small files","s":4915200,"f":40,"t":2,"e":"jpg"}]},{"i":-1,"n":"1 smaller items","s":4096,"f":1,"t":3}]}]},{"i":317,"n":"Library","s":1468006400,"f":12,"t":1,"k":[{"i":318,"n":"Containers","s":545259520,"f":1,"t":1,"k":[{"i":319,"n":"com.docker.docker","s":545259520,"f":1,"t":1,"k":[{"i":320,"n":"Data","s":545259520,"f":1,"t":1,"k":[{"i":321,"n":"vms","s":545259520,"f":1,"t":1,"k":[{"i":322,"n":"0","s":545259520,"f":1,"t":1,"k":[{"i":323,"n":"data","s":545259520,"f":1,"t":1,"k":[{"i":324,"n":"Docker.raw","s":545259520,"f":1,"t":0,"e":"raw"}]}]}]}]}]}]},{"i":325,"n":"Caches","s":503316480,"f":7,"t":1,"k":[{"i":326,"n":"com.spotify.client","s":146800640,"f":1,"t":1,"k":[{"i":327,"n":"Data","s":146800640,"f":1,"t":1,"k":[{"i":328,"n":"storage.bin","s":146800640,"f":1,"t":0,"e":"bin"}]}]},{"i":329,"n":"Homebrew","s":115343360,"f":2,"t":1,"k":[{"i":330,"n":"downloads","s":115343360,"f":2,"t":1,"k":[{"i":331,"n":"node--22.11.0.bottle.tar.gz","s":73400320,"f":1,"t":0,"e":"gz"},{"i":332,"n":"python@3.13.bottle.tar.gz","s":41943040,"f":1,"t":0,"e":"gz"}]}]},{"i":333,"n":"Google","s":89128960,"f":1,"t":1,"k":[{"i":334,"n":"Chrome","s":89128960,"f":1,"t":1,"k":[{"i":335,"n":"Default","s":89128960,"f":1,"t":1,"k":[{"i":336,"n":"Cache","s":89128960,"f":1,"t":1,"k":[{"i":337,"n":"data_1","s":89128960,"f":1,"t":0}]}]}]}]},{"i":338,"n":"go-build","s":73400320,"f":1,"t":1,"k":[{"i":339,"n":"trim.bin","s":73400320,"f":1,"t":0,"e":"bin"}]},{"i":340,"n":"pip","s":47185920,"f":1,"t":1,"k":[{"i":341,"n":"http","s":47185920,"f":1,"t":1,"k":[{"i":342,"n":"wheels.bin","s":47185920,"f":1,"t":0,"e":"bin"}]}]},{"i":343,"n":"com.apple.Safari","s":31457280,"f":1,"t":1,"k":[{"i":344,"n":"WebKitCache","s":31457280,"f":1,"t":0}]}]},{"i":345,"n":"Developer","s":335544320,"f":2,"t":1,"k":[{"i":346,"n":"Xcode","s":335544320,"f":2,"t":1,"k":[{"i":347,"n":"DerivedData","s":241172480,"f":1,"t":1,"k":[{"i":348,"n":"MyApp-bxqzt","s":241172480,"f":1,"t":1,"k":[{"i":349,"n":"Build","s":241172480,"f":1,"t":1,"k":[{"i":350,"n":"Products.bin","s":241172480,"f":1,"t":0,"e":"bin"}]}]}]},{"i":351,"n":"Archives","s":94371840,"f":1,"t":1,"k":[{"i":352,"n":"2026-01-12","s":94371840,"f":1,"t":1,"k":[{"i":353,"n":"MyApp 1.4.xcarchive","s":94371840,"f":1,"t":1,"k":[{"i":354,"n":"Products.bin","s":94371840,"f":1,"t":0,"e":"bin"}]}]}]}]}]},{"i":355,"n":"Application Support","s":62914560,"f":1,"t":1,"k":[{"i":356,"n":"Slack","s":62914560,"f":1,"t":1,"k":[{"i":357,"n":"Cache","s":62914560,"f":1,"t":1,"k":[{"i":358,"n":"Cache_Data","s":62914560,"f":1,"t":1,"k":[{"i":359,"n":"data_0","s":62914560,"f":1,"t":0}]}]}]}]},{"i":360,"n":"Logs","s":20971520,"f":1,"t":1,"k":[{"i":361,"n":"DiagnosticReports","s":20971520,"f":1,"t":1,"k":[{"i":362,"n":"MyApp-2026-02-11.ips","s":20971520,"f":1,"t":0,"e":"ips"}]}]}]},{"i":363,"n":"Movies","s":807403520,"f":3,"t":1,"k":[{"i":364,"n":"Family trip 2025.mov","s":440401920,"f":1,"t":0,"e":"mov"},{"i":365,"n":"Drone - coastline.mp4","s":272629760,"f":1,"t":0,"e":"mp4"},{"i":366,"n":"Screen Recording 2026-03-02.mov","s":94371840,"f":1,"t":0,"e":"mov"}]},{"i":367,"n":"Downloads","s":751828992,"f":5,"t":1,"k":[{"i":368,"n":"Xcode_16.2.xip","s":398458880,"f":1,"t":0,"e":"xip"},{"i":369,"n":"Docker.dmg","s":188743680,"f":1,"t":0,"e":"dmg"},{"i":370,"n":"ollama-darwin.zip","s":99614720,"f":1,"t":0,"e":"zip"},{"i":371,"n":"dataset-2025.csv","s":62914560,"f":1,"t":0,"e":"csv"},{"i":372,"n":"invoice-0420.pdf","s":2097152,"f":1,"t":0,"e":"pdf"}]},{"i":373,"n":".cache","s":267386880,"f":2,"t":1,"k":[{"i":374,"n":"huggingface","s":209715200,"f":1,"t":1,"k":[{"i":375,"n":"hub","s":209715200,"f":1,"t":1,"k":[{"i":376,"n":"models--bert-base-uncased","s":209715200,"f":1,"t":1,"k":[{"i":377,"n":"model.safetensors","s":209715200,"f":1,"t":0,"e":"safetensors"}]}]}]},{"i":378,"n":"puppeteer","s":57671680,"f":1,"t":1,"k":[{"i":379,"n":"chrome","s":57671680,"f":1,"t":1,"k":[{"i":380,"n":"chrome-mac.zip","s":57671680,"f":1,"t":0,"e":"zip"}]}]}]},{"i":381,"n":".nvm","s":204472320,"f":3,"t":1,"k":[{"i":382,"n":"versions","s":204472320,"f":3,"t":1,"k":[{"i":383,"n":"node","s":204472320,"f":3,"t":1,"k":[{"i":384,"n":"v22.11.0","s":73400320,"f":1,"t":1,"k":[{"i":385,"n":"bin","s":73400320,"f":1,"t":1,"k":[{"i":386,"n":"node","s":73400320,"f":1,"t":0}]}]},{"i":387,"n":"v20.18.0","s":68157440,"f":1,"t":1,"k":[{"i":388,"n":"bin","s":68157440,"f":1,"t":1,"k":[{"i":389,"n":"node","s":68157440,"f":1,"t":0}]}]},{"i":390,"n":"v18.20.4","s":62914560,"f":1,"t":1,"k":[{"i":391,"n":"bin","s":62914560,"f":1,"t":1,"k":[{"i":392,"n":"node","s":62914560,"f":1,"t":0}]}]}]}]}]},{"i":393,"n":"Pictures","s":150994944,"f":44,"t":1,"k":[{"i":394,"n":"Photos Library.photoslibrary","s":125829120,"f":40,"t":1,"k":[{"i":395,"n":"originals","s":125829120,"f":40,"t":1,"k":[{"i":396,"n":"4","s":9437184,"f":3,"t":1,"k":[{"i":397,"n":"IMG_4120.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":398,"n":"IMG_4136.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":399,"n":"IMG_4104.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":400,"n":"0","s":9437184,"f":3,"t":1,"k":[{"i":401,"n":"IMG_4116.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":402,"n":"IMG_4100.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":403,"n":"IMG_4132.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":404,"n":"7","s":9437184,"f":3,"t":1,"k":[{"i":405,"n":"IMG_4107.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":406,"n":"IMG_4123.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":407,"n":"IMG_4139.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":408,"n":"6","s":9437184,"f":3,"t":1,"k":[{"i":409,"n":"IMG_4106.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":410,"n":"IMG_4138.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":411,"n":"IMG_4122.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":412,"n":"1","s":9437184,"f":3,"t":1,"k":[{"i":413,"n":"IMG_4101.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":414,"n":"IMG_4117.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":415,"n":"IMG_4133.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":416,"n":"5","s":9437184,"f":3,"t":1,"k":[{"i":417,"n":"IMG_4137.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":418,"n":"IMG_4121.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":419,"n":"IMG_4105.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":420,"n":"2","s":9437184,"f":3,"t":1,"k":[{"i":421,"n":"IMG_4102.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":422,"n":"IMG_4134.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":423,"n":"IMG_4118.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":424,"n":"3","s":9437184,"f":3,"t":1,"k":[{"i":425,"n":"IMG_4119.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":426,"n":"IMG_4135.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":427,"n":"IMG_4103.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":428,"n":"C","s":6291456,"f":2,"t":1,"k":[{"i":429,"n":"IMG_4128.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":430,"n":"IMG_4112.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":431,"n":"D","s":6291456,"f":2,"t":1,"k":[{"i":432,"n":"IMG_4113.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":433,"n":"IMG_4129.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":434,"n":"9","s":6291456,"f":2,"t":1,"k":[{"i":435,"n":"IMG_4109.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":436,"n":"IMG_4125.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":437,"n":"F","s":6291456,"f":2,"t":1,"k":[{"i":438,"n":"IMG_4131.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":439,"n":"IMG_4115.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":440,"n":"E","s":6291456,"f":2,"t":1,"k":[{"i":441,"n":"IMG_4130.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":442,"n":"IMG_4114.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":443,"n":"B","s":6291456,"f":2,"t":1,"k":[{"i":444,"n":"IMG_4111.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":445,"n":"IMG_4127.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":446,"n":"A","s":6291456,"f":2,"t":1,"k":[{"i":447,"n":"IMG_4126.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":448,"n":"IMG_4110.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]},{"i":449,"n":"8","s":6291456,"f":2,"t":1,"k":[{"i":450,"n":"IMG_4124.HEIC","s":3145728,"f":1,"t":0,"e":"heic"},{"i":451,"n":"IMG_4108.HEIC","s":3145728,"f":1,"t":0,"e":"heic"}]}]}]},{"i":452,"n":"Wallpapers","s":25165824,"f":4,"t":1,"k":[{"i":453,"n":"wallpaper-2.png","s":6291456,"f":1,"t":0,"e":"png"},{"i":454,"n":"wallpaper-3.png","s":6291456,"f":1,"t":0,"e":"png"},{"i":455,"n":"wallpaper-1.png","s":6291456,"f":1,"t":0,"e":"png"},{"i":456,"n":"wallpaper-0.png","s":6291456,"f":1,"t":0,"e":"png"}]}]},{"i":457,"n":"Music","s":132120576,"f":18,"t":1,"k":[{"i":458,"n":"Albums","s":132120576,"f":18,"t":1,"k":[{"i":459,"n":"Lo-fi Sessions","s":132120576,"f":18,"t":1,"k":[{"i":460,"n":"06 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":461,"n":"12 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":462,"n":"14 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":463,"n":"13 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":464,"n":"07 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":465,"n":"15 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":466,"n":"01 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":467,"n":"18 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":468,"n":"04 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":469,"n":"10 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":470,"n":"09 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":471,"n":"02 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":472,"n":"16 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":473,"n":"11 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":474,"n":"05 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":475,"n":"08 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":476,"n":"17 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"},{"i":477,"n":"03 Track.m4a","s":7340032,"f":1,"t":0,"e":"m4a"}]}]}]},{"i":478,"n":".npm","s":78643200,"f":1,"t":1,"k":[{"i":479,"n":"_cacache","s":78643200,"f":1,"t":1,"k":[{"i":480,"n":"content-v2","s":78643200,"f":1,"t":1,"k":[{"i":481,"n":"sha512","s":78643200,"f":1,"t":1,"k":[{"i":482,"n":"blob","s":78643200,"f":1,"t":0}]}]}]}]},{"i":483,"n":"Documents","s":67043328,"f":127,"t":1,"k":[{"i":484,"n":"Thesis.pages","s":36700160,"f":1,"t":0,"e":"pages"},{"i":485,"n":"Taxes","s":20971520,"f":5,"t":1,"k":[{"i":486,"n":"2023-return.pdf","s":4194304,"f":1,"t":0,"e":"pdf"},{"i":487,"n":"2024-return.pdf","s":4194304,"f":1,"t":0,"e":"pdf"},{"i":488,"n":"2021-return.pdf","s":4194304,"f":1,"t":0,"e":"pdf"},{"i":489,"n":"2022-return.pdf","s":4194304,"f":1,"t":0,"e":"pdf"},{"i":490,"n":"2025-return.pdf","s":4194304,"f":1,"t":0,"e":"pdf"}]},{"i":491,"n":"Budget.numbers","s":8388608,"f":1,"t":0,"e":"numbers"},{"i":492,"n":"Notes","s":983040,"f":120,"t":1,"k":[{"i":-1,"n":"120 small files","s":983040,"f":120,"t":2,"e":"md"}]}]}]},"top":[{"i":324,"n":"Docker.raw","p":"/private/tmp/tpdv-demo/alex/Library/Containers/com.docker.docker/Data/vms/0/data","s":545259520,"e":"raw"},{"i":364,"n":"Family trip 2025.mov","p":"/private/tmp/tpdv-demo/alex/Movies","s":440401920,"e":"mov"},{"i":368,"n":"Xcode_16.2.xip","p":"/private/tmp/tpdv-demo/alex/Downloads","s":398458880,"e":"xip"},{"i":365,"n":"Drone - coastline.mp4","p":"/private/tmp/tpdv-demo/alex/Movies","s":272629760,"e":"mp4"},{"i":9,"n":"libtorch_cpu.dylib","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/.venv/lib/python3.12/site-packages/torch/lib","s":251658240,"e":"dylib"},{"i":13,"n":"checkpoint-final.safetensors","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/models","s":251658240,"e":"safetensors"},{"i":350,"n":"Products.bin","p":"/private/tmp/tpdv-demo/alex/Library/Developer/Xcode/DerivedData/MyApp-bxqzt/Build","s":241172480,"e":"bin"},{"i":229,"n":"terraform-provider-aws","p":"/private/tmp/tpdv-demo/alex/Projects/infra/.terraform/providers/registry.terraform.io/hashicorp/aws","s":220200960},{"i":377,"n":"model.safetensors","p":"/private/tmp/tpdv-demo/alex/.cache/huggingface/hub/models--bert-base-uncased","s":209715200,"e":"safetensors"},{"i":15,"n":"train.parquet","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/data","s":188743680,"e":"parquet"},{"i":369,"n":"Docker.dmg","p":"/private/tmp/tpdv-demo/alex/Downloads","s":188743680,"e":"dmg"},{"i":328,"n":"storage.bin","p":"/private/tmp/tpdv-demo/alex/Library/Caches/com.spotify.client/Data","s":146800640,"e":"bin"},{"i":234,"n":"librust_cli.rlib","p":"/private/tmp/tpdv-demo/alex/Projects/rust-cli/target/debug/deps","s":125829120,"e":"rlib"},{"i":37,"n":"binary.node","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/node_modules/@next/swc-darwin-arm64/bin","s":125829120,"e":"node"},{"i":370,"n":"ollama-darwin.zip","p":"/private/tmp/tpdv-demo/alex/Downloads","s":99614720,"e":"zip"},{"i":354,"n":"Products.bin","p":"/private/tmp/tpdv-demo/alex/Library/Developer/Xcode/Archives/2026-01-12/MyApp 1.4.xcarchive","s":94371840,"e":"bin"},{"i":366,"n":"Screen Recording 2026-03-02.mov","p":"/private/tmp/tpdv-demo/alex/Movies","s":94371840,"e":"mov"},{"i":337,"n":"data_1","p":"/private/tmp/tpdv-demo/alex/Library/Caches/Google/Chrome/Default/Cache","s":89128960},{"i":219,"n":"binary","p":"/private/tmp/tpdv-demo/alex/Projects/mobile-app/ios/Pods/Firebase/Firebase.xcframework","s":89128960},{"i":482,"n":"blob","p":"/private/tmp/tpdv-demo/alex/.npm/_cacache/content-v2/sha512","s":78643200},{"i":339,"n":"trim.bin","p":"/private/tmp/tpdv-demo/alex/Library/Caches/go-build","s":73400320,"e":"bin"},{"i":331,"n":"node--22.11.0.bottle.tar.gz","p":"/private/tmp/tpdv-demo/alex/Library/Caches/Homebrew/downloads","s":73400320,"e":"gz"},{"i":386,"n":"node","p":"/private/tmp/tpdv-demo/alex/.nvm/versions/node/v22.11.0/bin","s":73400320},{"i":389,"n":"node","p":"/private/tmp/tpdv-demo/alex/.nvm/versions/node/v20.18.0/bin","s":68157440},{"i":359,"n":"data_0","p":"/private/tmp/tpdv-demo/alex/Library/Application Support/Slack/Cache/Cache_Data","s":62914560},{"i":392,"n":"node","p":"/private/tmp/tpdv-demo/alex/.nvm/versions/node/v18.20.4/bin","s":62914560},{"i":139,"n":"binary.node","p":"/private/tmp/tpdv-demo/alex/Projects/mobile-app/node_modules/react-native/bin","s":62914560,"e":"node"},{"i":371,"n":"dataset-2025.csv","p":"/private/tmp/tpdv-demo/alex/Downloads","s":62914560,"e":"csv"},{"i":380,"n":"chrome-mac.zip","p":"/private/tmp/tpdv-demo/alex/.cache/puppeteer/chrome","s":57671680,"e":"zip"},{"i":142,"n":"binary.node","p":"/private/tmp/tpdv-demo/alex/Projects/mobile-app/node_modules/hermes-engine/bin","s":47185920,"e":"node"},{"i":342,"n":"wheels.bin","p":"/private/tmp/tpdv-demo/alex/Library/Caches/pip/http","s":47185920,"e":"bin"},{"i":16,"n":"eval.parquet","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/data","s":41943040,"e":"parquet"},{"i":235,"n":"rust-cli","p":"/private/tmp/tpdv-demo/alex/Projects/rust-cli/target/debug","s":41943040},{"i":332,"n":"python@3.13.bottle.tar.gz","p":"/private/tmp/tpdv-demo/alex/Library/Caches/Homebrew/downloads","s":41943040,"e":"gz"},{"i":484,"n":"Thesis.pages","p":"/private/tmp/tpdv-demo/alex/Documents","s":36700160,"e":"pages"},{"i":243,"n":"binary.node","p":"/private/tmp/tpdv-demo/alex/Projects/old-landing-page/node_modules/gatsby/bin","s":36700160,"e":"node"},{"i":11,"n":"core.so","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/.venv/lib/python3.12/site-packages/numpy","s":36700160,"e":"so"},{"i":222,"n":"binary","p":"/private/tmp/tpdv-demo/alex/Projects/mobile-app/ios/Pods/GoogleMaps/GoogleMaps.framework","s":36700160},{"i":40,"n":"binary.node","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/node_modules/sharp/bin","s":31457280,"e":"node"},{"i":344,"n":"WebKitCache","p":"/private/tmp/tpdv-demo/alex/Library/Caches/com.apple.Safari","s":31457280},{"i":43,"n":"binary.node","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/node_modules/typescript/bin","s":23068672,"e":"node"},{"i":362,"n":"MyApp-2026-02-11.ips","p":"/private/tmp/tpdv-demo/alex/Library/Logs/DiagnosticReports","s":20971520,"e":"ips"},{"i":237,"n":"rust-cli","p":"/private/tmp/tpdv-demo/alex/Projects/rust-cli/target/release","s":18874368},{"i":130,"n":"client-8.pack","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/.next/cache/webpack","s":12582912,"e":"pack"},{"i":127,"n":"client-2.pack","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/.next/cache/webpack","s":12582912,"e":"pack"},{"i":126,"n":"client-3.pack","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/.next/cache/webpack","s":12582912,"e":"pack"},{"i":125,"n":"client-0.pack","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/.next/cache/webpack","s":12582912,"e":"pack"},{"i":124,"n":"client-1.pack","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/.next/cache/webpack","s":12582912,"e":"pack"},{"i":123,"n":"client-6.pack","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/.next/cache/webpack","s":12582912,"e":"pack"},{"i":122,"n":"client-7.pack","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/.next/cache/webpack","s":12582912,"e":"pack"},{"i":128,"n":"client-5.pack","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/.next/cache/webpack","s":12582912,"e":"pack"},{"i":129,"n":"client-9.pack","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/.next/cache/webpack","s":12582912,"e":"pack"},{"i":131,"n":"client-4.pack","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/.next/cache/webpack","s":12582912,"e":"pack"},{"i":46,"n":"binary.node","p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/node_modules/esbuild/bin","s":9437184,"e":"node"},{"i":491,"n":"Budget.numbers","p":"/private/tmp/tpdv-demo/alex/Documents","s":8388608,"e":"numbers"},{"i":473,"n":"11 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":461,"n":"12 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":460,"n":"06 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":477,"n":"03 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":476,"n":"17 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":475,"n":"08 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":474,"n":"05 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":462,"n":"14 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":472,"n":"16 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":471,"n":"02 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":470,"n":"09 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":469,"n":"10 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":468,"n":"04 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":467,"n":"18 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":466,"n":"01 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":465,"n":"15 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":464,"n":"07 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":463,"n":"13 Track.m4a","p":"/private/tmp/tpdv-demo/alex/Music/Albums/Lo-fi Sessions","s":7340032,"e":"m4a"},{"i":455,"n":"wallpaper-1.png","p":"/private/tmp/tpdv-demo/alex/Pictures/Wallpapers","s":6291456,"e":"png"},{"i":454,"n":"wallpaper-3.png","p":"/private/tmp/tpdv-demo/alex/Pictures/Wallpapers","s":6291456,"e":"png"},{"i":453,"n":"wallpaper-2.png","p":"/private/tmp/tpdv-demo/alex/Pictures/Wallpapers","s":6291456,"e":"png"},{"i":456,"n":"wallpaper-0.png","p":"/private/tmp/tpdv-demo/alex/Pictures/Wallpapers","s":6291456,"e":"png"},{"i":490,"n":"2025-return.pdf","p":"/private/tmp/tpdv-demo/alex/Documents/Taxes","s":4194304,"e":"pdf"},{"i":489,"n":"2022-return.pdf","p":"/private/tmp/tpdv-demo/alex/Documents/Taxes","s":4194304,"e":"pdf"},{"i":488,"n":"2021-return.pdf","p":"/private/tmp/tpdv-demo/alex/Documents/Taxes","s":4194304,"e":"pdf"},{"i":487,"n":"2024-return.pdf","p":"/private/tmp/tpdv-demo/alex/Documents/Taxes","s":4194304,"e":"pdf"},{"i":486,"n":"2023-return.pdf","p":"/private/tmp/tpdv-demo/alex/Documents/Taxes","s":4194304,"e":"pdf"},{"i":448,"n":"IMG_4110.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/A","s":3145728,"e":"heic"},{"i":433,"n":"IMG_4129.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/D","s":3145728,"e":"heic"},{"i":398,"n":"IMG_4136.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/4","s":3145728,"e":"heic"},{"i":397,"n":"IMG_4120.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/4","s":3145728,"e":"heic"},{"i":403,"n":"IMG_4132.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/0","s":3145728,"e":"heic"},{"i":402,"n":"IMG_4100.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/0","s":3145728,"e":"heic"},{"i":401,"n":"IMG_4116.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/0","s":3145728,"e":"heic"},{"i":407,"n":"IMG_4139.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/7","s":3145728,"e":"heic"},{"i":406,"n":"IMG_4123.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/7","s":3145728,"e":"heic"},{"i":405,"n":"IMG_4107.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/7","s":3145728,"e":"heic"},{"i":411,"n":"IMG_4122.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/6","s":3145728,"e":"heic"},{"i":410,"n":"IMG_4138.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/6","s":3145728,"e":"heic"},{"i":409,"n":"IMG_4106.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/6","s":3145728,"e":"heic"},{"i":415,"n":"IMG_4133.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/1","s":3145728,"e":"heic"},{"i":414,"n":"IMG_4117.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/1","s":3145728,"e":"heic"},{"i":413,"n":"IMG_4101.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/1","s":3145728,"e":"heic"},{"i":419,"n":"IMG_4105.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/5","s":3145728,"e":"heic"},{"i":418,"n":"IMG_4121.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/5","s":3145728,"e":"heic"},{"i":417,"n":"IMG_4137.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/5","s":3145728,"e":"heic"},{"i":423,"n":"IMG_4118.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/2","s":3145728,"e":"heic"},{"i":422,"n":"IMG_4134.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/2","s":3145728,"e":"heic"},{"i":421,"n":"IMG_4102.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/2","s":3145728,"e":"heic"},{"i":427,"n":"IMG_4103.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/3","s":3145728,"e":"heic"},{"i":426,"n":"IMG_4135.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/3","s":3145728,"e":"heic"},{"i":425,"n":"IMG_4119.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/3","s":3145728,"e":"heic"},{"i":430,"n":"IMG_4112.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/C","s":3145728,"e":"heic"},{"i":429,"n":"IMG_4128.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/C","s":3145728,"e":"heic"},{"i":399,"n":"IMG_4104.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/4","s":3145728,"e":"heic"},{"i":432,"n":"IMG_4113.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/D","s":3145728,"e":"heic"},{"i":436,"n":"IMG_4125.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/9","s":3145728,"e":"heic"},{"i":435,"n":"IMG_4109.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/9","s":3145728,"e":"heic"},{"i":439,"n":"IMG_4115.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/F","s":3145728,"e":"heic"},{"i":438,"n":"IMG_4131.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/F","s":3145728,"e":"heic"},{"i":442,"n":"IMG_4114.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/E","s":3145728,"e":"heic"},{"i":441,"n":"IMG_4130.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/E","s":3145728,"e":"heic"},{"i":445,"n":"IMG_4127.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/B","s":3145728,"e":"heic"},{"i":444,"n":"IMG_4111.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/B","s":3145728,"e":"heic"},{"i":447,"n":"IMG_4126.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/A","s":3145728,"e":"heic"},{"i":451,"n":"IMG_4108.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/8","s":3145728,"e":"heic"},{"i":450,"n":"IMG_4124.HEIC","p":"/private/tmp/tpdv-demo/alex/Pictures/Photos Library.photoslibrary/originals/8","s":3145728,"e":"heic"},{"i":372,"n":"invoice-0420.pdf","p":"/private/tmp/tpdv-demo/alex/Downloads","s":2097152,"e":"pdf"},{"i":24,"n":"exp-005.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"},{"i":20,"n":"exp-006.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"},{"i":21,"n":"exp-004.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"},{"i":22,"n":"exp-003.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"},{"i":23,"n":"exp-001.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"},{"i":18,"n":"exp-000.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"},{"i":25,"n":"exp-007.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"},{"i":19,"n":"exp-002.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"},{"i":26,"n":"exp-010.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"},{"i":27,"n":"exp-009.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"},{"i":28,"n":"exp-011.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"},{"i":29,"n":"exp-008.ipynb","p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/notebooks","s":307200,"e":"ipynb"}],"types":[{"e":"","s":873467904,"c":13},{"e":"bin","s":602931200,"c":5},{"e":"raw","s":545259520,"c":1},{"e":"mov","s":534773760,"c":2},{"e":"safetensors","s":461373440,"c":2},{"e":"xip","s":398458880,"c":1},{"e":"node","s":336592896,"c":7},{"e":"mp4","s":272629760,"c":1},{"e":"dylib","s":251658240,"c":1},{"e":"parquet","s":230686720,"c":2},{"e":"dmg","s":188743680,"c":1},{"e":"zip","s":157286400,"c":2},{"e":"m4a","s":132120576,"c":18},{"e":"js","s":128712704,"c":2672},{"e":"rlib","s":125829120,"c":1},{"e":"heic","s":125829120,"c":40},{"e":"pack","s":125829120,"c":10},{"e":"gz","s":115343360,"c":2},{"e":"csv","s":62914560,"c":1},{"e":"pages","s":36700160,"c":1},{"e":"so","s":36700160,"c":1},{"e":"png","s":25165824,"c":4},{"e":"pdf","s":23068672,"c":6},{"e":"ips","s":20971520,"c":1},{"e":"numbers","s":8388608,"c":1},{"e":"jpg","s":4915200,"c":40},{"e":"ipynb","s":3686400,"c":12},{"e":"pyc","s":2826240,"c":30},{"e":"tsx","s":1310720,"c":160},{"e":"md","s":983040,"c":120},{"e":"json","s":454656,"c":111},{"e":"rs","s":245760,"c":20},{"e":"cfg","s":4096,"c":1},{"e":"toml","s":4096,"c":1},{"e":"tf","s":4096,"c":1}],"suggest":[{"i":347,"pi":346,"p":"/private/tmp/tpdv-demo/alex/Library/Developer/Xcode/DerivedData","n":"DerivedData","s":241172480,"f":1,"d":true,"title":"Xcode DerivedData","safety":"safe","why":"Build products and indexes. Xcode rebuilds them on the next build."},{"i":326,"pi":325,"p":"/private/tmp/tpdv-demo/alex/Library/Caches/com.spotify.client","n":"com.spotify.client","s":146800640,"f":1,"d":true,"title":"App caches","safety":"safe","why":"Apps rebuild their caches. Quit the app first for best results."},{"i":119,"pi":32,"p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/.next","n":".next","s":127139840,"f":90,"d":true,"title":"JS framework build caches","safety":"safe","why":"Build output and caches (.next, .turbo, .parcel-cache, …). Regenerated on the next build or dev run.","mtime":1793022014},{"i":329,"pi":325,"p":"/private/tmp/tpdv-demo/alex/Library/Caches/Homebrew","n":"Homebrew","s":115343360,"f":2,"d":true,"title":"Homebrew downloads","safety":"safe","why":"Bottles and installers already installed.","cmd":"brew cleanup --prune=all"},{"i":333,"pi":325,"p":"/private/tmp/tpdv-demo/alex/Library/Caches/Google","n":"Google","s":89128960,"f":1,"d":true,"title":"App caches","safety":"safe","why":"Apps rebuild their caches. Quit the app first for best results."},{"i":479,"pi":478,"p":"/private/tmp/tpdv-demo/alex/.npm/_cacache","n":"_cacache","s":78643200,"f":1,"d":true,"title":"npm cache","safety":"safe","why":"Downloaded packages. npm fetches them again when needed.","cmd":"npm cache clean --force"},{"i":338,"pi":325,"p":"/private/tmp/tpdv-demo/alex/Library/Caches/go-build","n":"go-build","s":73400320,"f":1,"d":true,"title":"Go build cache","safety":"safe","why":"Compiled packages, rebuilt on the next go build.","cmd":"go clean -cache"},{"i":357,"pi":356,"p":"/private/tmp/tpdv-demo/alex/Library/Application Support/Slack/Cache","n":"Cache","s":62914560,"f":1,"d":true,"title":"Slack cache","safety":"safe","why":"Downloaded media and web cache. Quit Slack first."},{"i":340,"pi":325,"p":"/private/tmp/tpdv-demo/alex/Library/Caches/pip","n":"pip","s":47185920,"f":1,"d":true,"title":"pip cache","safety":"safe","why":"Downloaded wheels. pip fetches them again when needed.","cmd":"pip cache purge"},{"i":343,"pi":325,"p":"/private/tmp/tpdv-demo/alex/Library/Caches/com.apple.Safari","n":"com.apple.Safari","s":31457280,"f":1,"d":true,"title":"App caches","safety":"safe","why":"Apps rebuild their caches. Quit the app first for best results."},{"i":361,"pi":360,"p":"/private/tmp/tpdv-demo/alex/Library/Logs/DiagnosticReports","n":"DiagnosticReports","s":20971520,"f":1,"d":true,"title":"Log files","safety":"safe","why":"Diagnostic logs. Apps start new ones as needed."},{"i":31,"pi":30,"p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/src/__pycache__","n":"__pycache__","s":2826240,"f":30,"d":true,"title":"Python caches","safety":"safe","why":"Bytecode and tool caches. Python and the tools recreate them automatically."},{"i":3,"pi":2,"p":"/private/tmp/tpdv-demo/alex/Projects/ml-experiments/.venv","n":".venv","s":288362496,"f":3,"d":true,"title":"Python virtualenvs","safety":"rebuild","why":"Isolated Python installs. Recreate with python -m venv .venv and pip install -r requirements.txt.","mtime":1791553214},{"i":33,"pi":32,"p":"/private/tmp/tpdv-demo/alex/Projects/acme-web/node_modules","n":"node_modules","s":232407040,"f":904,"d":true,"title":"node_modules","safety":"rebuild","why":"JavaScript dependencies. Reinstall any time with npm / yarn / pnpm install.","mtime":1793022014},{"i":224,"pi":223,"p":"/private/tmp/tpdv-demo/alex/Projects/infra/.terraform","n":".terraform","s":220200960,"f":1,"d":true,"title":"Terraform providers","safety":"rebuild","why":"Downloaded providers and modules (often 500 MB+ each). terraform init downloads them again.","cmd":"terraform init","mtime":1760449214},{"i":374,"pi":373,"p":"/private/tmp/tpdv-demo/alex/.cache/huggingface","n":"huggingface","s":209715200,"f":1,"d":true,"title":"Hugging Face models","safety":"rebuild","why":"Downloaded models and datasets. Re-downloaded when a script uses them."},{"i":231,"pi":230,"p":"/private/tmp/tpdv-demo/alex/Projects/rust-cli/target","n":"target","s":186646528,"f":3,"d":true,"title":"Rust build output","safety":"rebuild","why":"Compiled artifacts in target/. Rebuilt by cargo build.","cmd":"cargo clean","mtime":1780321214},{"i":136,"pi":135,"p":"/private/tmp/tpdv-demo/alex/Projects/mobile-app/node_modules","n":"node_modules","s":152715264,"f":902,"d":true,"title":"node_modules","safety":"rebuild","why":"JavaScript dependencies. Reinstall any time with npm / yarn / pnpm install.","mtime":1788097214},{"i":216,"pi":215,"p":"/private/tmp/tpdv-demo/alex/Projects/mobile-app/ios/Pods","n":"Pods","s":125829120,"f":2,"d":true,"title":"CocoaPods","safety":"rebuild","why":"iOS dependencies in Pods/. Restored by pod install.","cmd":"pod install","mtime":1788097214},{"i":240,"pi":239,"p":"/private/tmp/tpdv-demo/alex/Projects/old-landing-page/node_modules","n":"node_modules","s":79314944,"f":901,"d":true,"title":"node_modules","safety":"rebuild","why":"JavaScript dependencies. Reinstall any time with npm / yarn / pnpm install.","mtime":1748353214},{"i":378,"pi":373,"p":"/private/tmp/tpdv-demo/alex/.cache/puppeteer","n":"puppeteer","s":57671680,"f":1,"d":true,"title":"User caches (~/.cache)","safety":"rebuild","why":"Tool caches. Each tool re-creates or re-downloads what it needs."},{"i":319,"pi":318,"p":"/private/tmp/tpdv-demo/alex/Library/Containers/com.docker.docker","n":"com.docker.docker","s":545259520,"f":1,"d":true,"title":"Docker data","safety":"review","why":"Docker images, containers and volumes. Prune unused ones from Docker; deleting the folder resets Docker.","cmd":"docker system prune -a --volumes","noTrash":true},{"i":368,"pi":367,"p":"/private/tmp/tpdv-demo/alex/Downloads/Xcode_16.2.xip","n":"Xcode_16.2.xip","s":398458880,"f":1,"d":false,"title":"Installers \u0026 archives in Downloads","safety":"review","why":"Usually not needed after installing or extracting."},{"i":369,"pi":367,"p":"/private/tmp/tpdv-demo/alex/Downloads/Docker.dmg","n":"Docker.dmg","s":188743680,"f":1,"d":false,"title":"Installers \u0026 archives in Downloads","safety":"review","why":"Usually not needed after installing or extracting."},{"i":370,"pi":367,"p":"/private/tmp/tpdv-demo/alex/Downloads/ollama-darwin.zip","n":"ollama-darwin.zip","s":99614720,"f":1,"d":false,"title":"Installers \u0026 archives in Downloads","safety":"review","why":"Usually not needed after installing or extracting."},{"i":351,"pi":346,"p":"/private/tmp/tpdv-demo/alex/Library/Developer/Xcode/Archives","n":"Archives","s":94371840,"f":1,"d":true,"title":"Xcode archives","safety":"review","why":"App builds you archived. Keep the releases you need for crash symbolication."},{"i":384,"pi":383,"p":"/private/tmp/tpdv-demo/alex/.nvm/versions/node/v22.11.0","n":"v22.11.0","s":73400320,"f":1,"d":true,"title":"Node versions (nvm)","safety":"review","why":"Installed Node.js versions. Remove unused ones with nvm uninstall \u003cversion\u003e.","cmd":"nvm ls"},{"i":387,"pi":383,"p":"/private/tmp/tpdv-demo/alex/.nvm/versions/node/v20.18.0","n":"v20.18.0","s":68157440,"f":1,"d":true,"title":"Node versions (nvm)","safety":"review","why":"Installed Node.js versions. Remove unused ones with nvm uninstall \u003cversion\u003e.","cmd":"nvm ls"},{"i":390,"pi":383,"p":"/private/tmp/tpdv-demo/alex/.nvm/versions/node/v18.20.4","n":"v18.20.4","s":62914560,"f":1,"d":true,"title":"Node versions (nvm)","safety":"review","why":"Installed Node.js versions. Remove unused ones with nvm uninstall \u003cversion\u003e.","cmd":"nvm ls"}],"home":"/private/tmp/tpdv-demo/alex"},"mode":"report"};</script>
+<script>
+(() => {
+'use strict';
+const CFG = window.TPDV || { mode: 'report', data: null };
+const LIVE = CFG.mode === 'live';
+const $ = s => document.querySelector(s);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+// ---------- formatting ----------
+const fmt = b => {
+  if (b < 1000) return b + ' B';
+  const u = ['kB', 'MB', 'GB', 'TB', 'PB']; let i = -1;
+  do { b /= 1000; i++; } while (b >= 1000 && i < u.length - 1);
+  return (b >= 100 ? b.toFixed(0) : b >= 10 ? b.toFixed(1) : b.toFixed(2)) + ' ' + u[i];
+};
+const num = n => Math.round(n).toLocaleString();
+const pct = (a, b) => b > 0 ? a / b * 100 : 0;
+const HOME = (LIVE ? CFG.home : CFG.data && CFG.data.home) || '';
+// tild shortens paths under the home folder to ~/… for display.
+const tild = p => HOME && (p === HOME || p.startsWith(HOME + '/')) ? '~' + p.slice(HOME.length) : p;
+const fmtPct = p => p >= 10 ? p.toFixed(0) + '%' : p >= 1 ? p.toFixed(1) + '%' : p > 0 ? '<1%' : '0%';
+
+// ---------- file categories ----------
+const CATS = {
+  video:   { label: 'Video', color: '#e5534b', ext: 'mp4 mov m4v mkv avi wmv flv webm mpg mpeg 3gp mts m2ts vob braw r3d' },
+  image:   { label: 'Images', color: '#ec8a3c', ext: 'jpg jpeg png gif heic heif webp tif tiff bmp raw cr2 cr3 nef arw dng psd psb ai svg ico icns sketch fig xcf exr' },
+  audio:   { label: 'Audio', color: '#d6a62a', ext: 'mp3 m4a aac wav flac aiff aif ogg opus wma caf alac mid midi logicx band' },
+  archive: { label: 'Archives', color: '#b06ae0', ext: 'zip gz tgz bz2 xz 7z rar tar zst lz4 lzma cab jar war xip' },
+  disk:    { label: 'Disk images & installers', color: '#8a63f2', ext: 'dmg iso img sparseimage sparsebundle vmdk vdi qcow2 vhd vhdx pkg mpkg ipa apk xapk aab ova' },
+  code:    { label: 'Code', color: '#3fb984', ext: 'js mjs cjs ts tsx jsx py rb go rs java kt kts swift m mm h hpp c cc cpp cs php sh zsh bash lua dart scala sql html htm css scss less vue svelte json yaml yml toml xml gradle lock map' },
+  doc:     { label: 'Documents', color: '#4c9be8', ext: 'pdf doc docx xls xlsx ppt pptx pages numbers key txt md rtf csv tsv epub odt ods odp tex log' },
+  data:    { label: 'Data & ML models', color: '#2bb3b1', ext: 'db sqlite sqlite3 realm parquet avro arrow npy npz h5 hdf5 pkl pt pth ckpt safetensors onnx gguf bin dat idx pack wal' },
+  binary:  { label: 'Apps & libraries', color: '#6f87a6', ext: 'app dylib so a o exe dll node wasm class pyc car nib plist asar' },
+};
+const OTHER = { label: 'Other', color: '#7f8996' };
+const EXT2CAT = {};
+for (const [k, c] of Object.entries(CATS)) for (const e of c.ext.split(' ')) EXT2CAT[e] = k;
+const catOf = e => CATS[EXT2CAT[e]] || OTHER;
+
+const media = matchMedia('(prefers-color-scheme: dark)');
+let TH;
+function setTheme() {
+  TH = media.matches ? {
+    dir: d => `hsl(216, 13%, ${Math.min(10 + d * 3.4, 34)}%)`, hdr: '#d3d9e2', hdrDim: '#7c8696',
+    small: '#3a424e', rest: '#2b323c', leafText: 'rgba(8,10,13,.82)', leafDim: 'rgba(8,10,13,.55)', pseudoText: '#a3acba',
+    sel: '#5b9bff', hover: 'rgba(255,255,255,.92)',
+  } : {
+    dir: d => `hsl(214, 18%, ${Math.max(95 - d * 4.5, 66)}%)`, hdr: '#262c35', hdrDim: '#66707f',
+    small: '#c9cfd8', rest: '#dadfe5', leafText: 'rgba(8,10,13,.85)', leafDim: 'rgba(8,10,13,.55)', pseudoText: '#4b5462',
+    sel: '#2f6fe0', hover: 'rgba(0,0,0,.85)',
+  };
+}
+setTheme();
+media.addEventListener('change', () => { setTheme(); palCache.clear(); draw(); });
+
+const palCache = new Map();
+function pal(hex) {
+  let p = palCache.get(hex);
+  if (!p) {
+    const v = parseInt(hex.slice(1), 16), r = v >> 16, g = (v >> 8) & 255, b = v & 255;
+    const mix = (t, f) => `rgb(${Math.round(r + (t - r) * f)},${Math.round(g + (t - g) * f)},${Math.round(b + (t - b) * f)})`;
+    p = { hi: mix(255, .22), lo: mix(0, .22), muted: media.matches ? mix(40, .5) : mix(235, .45) };
+    palCache.set(hex, p);
+  }
+  return p;
+}
+// Grouped small files take the muted color of their dominant type.
+const colorOf = n => n.t === 2 ? (n.e != null ? pal(catOf(n.e).color).muted : TH.small) : n.t === 3 ? TH.rest : n.t === 1 ? TH.dir(2) : catOf(n.e).color;
+
+// ---------- data sources ----------
+const api = LIVE ? {
+  async get(u) {
+    const r = await fetch(u, { headers: { 'X-TPDV-Token': CFG.token } });
+    if (!r.ok) { let m = r.statusText; try { m = (await r.json()).error || m; } catch {} throw new Error(m); }
+    return r.json();
+  },
+  async post(u, body) {
+    const r = await fetch(u, { method: 'POST', headers: { 'X-TPDV-Token': CFG.token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    let j = {}; try { j = await r.json(); } catch {}
+    if (!r.ok || j.error) throw new Error(j.error || r.statusText);
+    return j;
+  },
+  status() { return this.get('/api/status'); },
+  tree(id) { return this.get('/api/tree' + (id == null ? '' : '?id=' + id)); },
+  top(id) { return this.get('/api/top?n=300&id=' + id); },
+  types() { return this.get('/api/types'); },
+  action(op, id) { return this.post('/api/action', { op, id }); },
+  suggest() { return this.get('/api/suggest'); },
+  trashMany(ids) { return this.post('/api/trash', { ids }); },
+} : reportApi(CFG.data);
+
+function reportApi(data) {
+  const idx = new Map(), parent = new Map();
+  (function walk(n) { if (n.i >= 0) idx.set(n.i, n); if (n.k) for (const c of n.k) { parent.set(c, n); walk(c); } })(data.tree);
+  const chain = n => { const out = []; for (let x = n; x; x = parent.get(x)) out.unshift(x); return out; };
+  const join = ns => ns.map(x => x.n).reduce((a, b) => a.endsWith('/') ? a + b : a + '/' + b);
+  return {
+    async status() { return { scanning: false, info: data.info, freed: 0 }; },
+    async tree(id) {
+      const n = id == null ? data.tree : idx.get(id);
+      if (!n) throw new Error('Not included in this report');
+      const c = chain(n);
+      return { path: join(c), crumbs: c.map(x => ({ i: x.i, n: x.n })), node: n, total: data.tree.s };
+    },
+    async top(id) {
+      const n = idx.get(id);
+      if (!n || n === data.tree) return data.top;
+      const p = join(chain(n)), pre = p.endsWith('/') ? p : p + '/';
+      return data.top.filter(f => (f.p + '/').startsWith(pre));
+    },
+    async types() { return data.types; },
+    async suggest() { return { items: data.suggest || [], home: data.home || '' }; },
+  };
+}
+
+// ---------- state ----------
+const S = { view: null, path: '', crumbs: [], total: 0, parent: new Map(), sel: null, hover: null, tab: 'contents', top: null, types: null, info: null, freed: 0 };
+
+// go shows folder id (null = scan root) and selects selId if it is visible.
+async function go(id, selId) {
+  try {
+    const r = await api.tree(id);
+    S.view = r.node; S.path = r.path; S.crumbs = r.crumbs; S.total = r.total;
+    S.parent = new Map();
+    (function walk(n) { if (n.k) for (const c of n.k) { S.parent.set(c, n); walk(c); } })(S.view);
+    S.sel = (selId != null && selId >= 0 && findById(selId)) || S.view;
+    S.top = null;
+    renderCrumbs(); draw(); renderSel(); renderList();
+    return true;
+  } catch (e) { toast(e.message, true); return false; }
+}
+function findById(id) {
+  let hit = null;
+  (function walk(n) { if (hit) return; if (n.i === id) { hit = n; return; } if (n.k) n.k.forEach(walk); })(S.view);
+  return hit;
+}
+function pathOf(n) {
+  if (n.p != null) return (n.p.endsWith('/') ? n.p : n.p + '/') + n.n; // top-files item
+  const names = [];
+  for (let x = n; x && x !== S.view; x = S.parent.get(x)) names.unshift(x.n);
+  if (!names.length) return S.path;
+  return (S.path.endsWith('/') ? S.path : S.path + '/') + names.join('/');
+}
+const actionable = n => n && n.i >= 0;
+const isDir = n => n && n.t === 1;
+const isScanRoot = n => n === S.view && S.crumbs.length === 1;
+function goUp() { if (S.crumbs.length > 1) go(S.crumbs[S.crumbs.length - 2].i); }
+
+// ---------- treemap ----------
+const wrap = $('#mapwrap'), cv = $('#map'), ov = $('#ov');
+const ctx = cv.getContext('2d'), octx = ov.getContext('2d');
+let W = 0, H = 0, DPR = 1, rects = [], drawQueued = false;
+
+function resize() {
+  DPR = window.devicePixelRatio || 1; W = wrap.clientWidth; H = wrap.clientHeight;
+  for (const c of [cv, ov]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); c.style.width = W + 'px'; c.style.height = H + 'px'; }
+  draw();
+}
+new ResizeObserver(() => { if (!drawQueued) { drawQueued = true; requestAnimationFrame(() => { drawQueued = false; resize(); }); } }).observe(wrap);
+
+// Squarified treemap (Bruls, Huizing, van Wijk). items sorted by size desc.
+function squarify(items, x, y, w, h) {
+  const out = [];
+  let total = 0; for (const it of items) total += it.s;
+  if (total <= 0 || w <= 0 || h <= 0) return out;
+  const scale = w * h / total;
+  let i = 0;
+  while (i < items.length && w > 0.5 && h > 0.5) {
+    const side = Math.min(w, h), s2 = side * side;
+    const row = []; let sum = 0, best = Infinity;
+    while (i < items.length) {
+      const a = items[i].s * scale;
+      if (a <= 0) { i++; continue; }
+      const ns = sum + a, ns2 = ns * ns;
+      const big = row.length ? row[0].a : a;
+      const worst = Math.max(s2 * big / ns2, ns2 / (s2 * a));
+      if (row.length && worst > best) break;
+      row.push({ n: items[i], a }); sum = ns; best = worst; i++;
+    }
+    if (!row.length) break;
+    if (w >= h) {
+      const cw = sum / h; let cy = y;
+      for (const r of row) { const rh = r.a / cw; out.push({ n: r.n, x, y: cy, w: cw, h: rh }); cy += rh; }
+      x += cw; w -= cw;
+    } else {
+      const rh = sum / w; let cx = x;
+      for (const r of row) { const rw = r.a / rh; out.push({ n: r.n, x: cx, y, w: rw, h: rh }); cx += rw; }
+      y += rh; h -= rh;
+    }
+  }
+  return out;
+}
+
+const FONT = '11px ' + getComputedStyle(document.body).fontFamily;
+const FONT_B = '600 ' + FONT;
+function fit(c, s, w) {
+  if (w < 10) return '';
+  if (c.measureText(s).width <= w) return s;
+  let lo = 0, hi = s.length;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (c.measureText(s.slice(0, m) + '…').width <= w) lo = m; else hi = m - 1; }
+  return lo ? s.slice(0, lo) + '…' : '';
+}
+
+function draw() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  rects = [];
+  if (S.view && W > 0 && H > 0) {
+    ctx.textBaseline = 'middle';
+    node(S.view, 0, 0, W, H, 0);
+  }
+  overlay();
+}
+
+function node(n, x, y, w, h, d) {
+  const x0 = Math.round(x), y0 = Math.round(y), x1 = Math.round(x + w), y1 = Math.round(y + h);
+  const rw = x1 - x0, rh = y1 - y0;
+  if (rw < 1 || rh < 1) return;
+  rects.push({ n, x: x0, y: y0, w: rw, h: rh });
+  if (n.t !== 1) return leaf(n, x0, y0, rw, rh);
+
+  ctx.fillStyle = TH.dir(d);
+  ctx.fillRect(x0, y0, rw, rh);
+  let hdr = 0;
+  if (d > 0 && rh >= 32 && rw >= 44) {
+    hdr = 17;
+    ctx.font = FONT_B; ctx.fillStyle = TH.hdr;
+    const name = fit(ctx, n.n, rw - 10);
+    ctx.fillText(name, x0 + 5, y0 + 9);
+    const nw = ctx.measureText(name).width;
+    ctx.font = FONT; ctx.fillStyle = TH.hdrDim;
+    const sz = fmt(n.s);
+    if (nw + ctx.measureText(sz).width + 18 < rw) ctx.fillText(sz, x0 + 11 + nw, y0 + 9);
+  }
+  const pad = d > 0 ? 2 : 1;
+  const ix = x0 + pad, iy = y0 + (hdr || pad), iw = rw - pad * 2, ih = rh - (hdr || pad) - pad;
+  if (n.k && n.k.length) {
+    if (iw >= 2 && ih >= 2) for (const r of squarify(n.k, ix, iy, iw, ih)) node(r.n, r.x, r.y, r.w, r.h, d + 1);
+  } else if (n.h && iw > 4 && ih > 4) {
+    ctx.fillStyle = TH.rest; ctx.fillRect(ix, iy, iw, ih);
+    if (iw > 60 && ih > 16) { ctx.font = FONT; ctx.fillStyle = TH.pseudoText; ctx.fillText(fit(ctx, 'double-click to open', iw - 10), ix + 5, iy + ih / 2); }
+  }
+}
+
+function leaf(n, x, y, w, h) {
+  const gw = w > 2 ? w - 1 : w, gh = h > 2 ? h - 1 : h;
+  const col = colorOf(n);
+  if (n.t === 0 && gw * gh > 300) {
+    const p = pal(col), g = ctx.createLinearGradient(x, y, x + gw * .6, y + gh);
+    g.addColorStop(0, p.hi); g.addColorStop(1, p.lo);
+    ctx.fillStyle = g;
+  } else ctx.fillStyle = col;
+  ctx.fillRect(x, y, gw, gh);
+  if (gw > 46 && gh > 16) {
+    const pseudo = n.t >= 2;
+    ctx.font = FONT_B; ctx.fillStyle = pseudo ? TH.pseudoText : TH.leafText;
+    ctx.fillText(fit(ctx, n.n, gw - 10), x + 5, y + 10);
+    if (gh > 31) { ctx.font = FONT; ctx.fillStyle = pseudo ? TH.hdrDim : TH.leafDim; ctx.fillText(fmt(n.s), x + 5, y + 24); }
+  }
+}
+
+function rectOf(n) { for (let i = rects.length - 1; i >= 0; i--) if (rects[i].n === n) return rects[i]; return null; }
+function hit(mx, my) {
+  for (let i = rects.length - 1; i >= 0; i--) { const r = rects[i]; if (mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h) return r; }
+  return null;
+}
+function overlay() {
+  octx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  octx.clearRect(0, 0, W, H);
+  const sr = S.sel && S.sel !== S.view ? rectOf(S.sel) : null;
+  if (sr) {
+    octx.fillStyle = 'rgba(0,0,0,.28)';
+    octx.beginPath(); octx.rect(0, 0, W, H); octx.rect(sr.x, sr.y, sr.w, sr.h); octx.fill('evenodd');
+    octx.lineWidth = 2; octx.strokeStyle = TH.sel; octx.strokeRect(sr.x + 1, sr.y + 1, Math.max(sr.w - 2, 1), Math.max(sr.h - 2, 1));
+  }
+  const hr = S.hover;
+  if (hr && hr !== sr && hr.n !== S.view) {
+    octx.lineWidth = 1.5; octx.strokeStyle = TH.hover;
+    octx.strokeRect(hr.x + .75, hr.y + .75, Math.max(hr.w - 1.5, 1), Math.max(hr.h - 1.5, 1));
+  }
+}
+
+// ---------- pointer ----------
+const tip = $('#tip');
+let pending = null;
+ov.addEventListener('mousemove', e => {
+  const b = ov.getBoundingClientRect();
+  pending = { x: e.clientX - b.left, y: e.clientY - b.top };
+  requestAnimationFrame(onMove);
+});
+function onMove() {
+  if (!pending) return;
+  const { x, y } = pending; pending = null;
+  const r = hit(x, y);
+  if (r !== S.hover) { S.hover = r; overlay(); }
+  if (!r || r.n === S.view) { tip.style.display = 'none'; $('#hoverpath').textContent = ''; return; }
+  const n = r.n;
+  tip.replaceChildren(
+    el('div', 't', n.n),
+    el('div', 's', `${fmt(n.s)} · ${fmtPct(pct(n.s, S.view.s))} of this folder` + (n.t === 1 ? ` · ${num(n.f || 0)} files` : n.t === 0 ? ` · ${catOf(n.e).label}` : '')),
+  );
+  if (n.t <= 1) tip.append(el('div', 'p', tild(pathOf(n))));
+  tip.style.display = 'block';
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  tip.style.left = Math.min(x + 14, W - tw - 6) + 'px';
+  tip.style.top = (y + 18 + th > H ? y - th - 10 : y + 18) + 'px';
+  $('#hoverpath').textContent = n.t <= 1 ? tild(pathOf(n)) : n.n;
+}
+ov.addEventListener('mouseleave', () => { S.hover = null; tip.style.display = 'none'; overlay(); });
+function hitEvent(e) { const b = ov.getBoundingClientRect(); return hit(e.clientX - b.left, e.clientY - b.top); }
+ov.addEventListener('click', e => { const r = hitEvent(e); if (r) select(r.n); });
+ov.addEventListener('dblclick', e => {
+  const r = hitEvent(e); if (!r) return;
+  let n = r.n;
+  if (n.t !== 1) n = S.parent.get(n); // double-clicking a file opens its folder
+  if (n && n !== S.view && actionable(n)) go(n.i);
+});
+ov.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const r = hitEvent(e); if (!r) return;
+  select(r.n); showMenu(r.n, e.clientX, e.clientY);
+});
+ov.addEventListener('mouseup', e => { if (e.button === 3) goUp(); });
+
+function select(n) {
+  S.sel = n; overlay(); renderSel();
+  document.querySelectorAll('#list .row').forEach(row => row.classList.toggle('on', row._n === n || (row._n && n && row._n.i >= 0 && row._n.i === n.i)));
+}
+
+// ---------- side panel ----------
+function kindLabel(n) {
+  if (n.t === 1) return 'Folder';
+  if (n.t === 2) return 'Small files (grouped)';
+  if (n.t === 3) return 'Smaller items (grouped)';
+  return (catOf(n.e).label) + (n.e ? ' · .' + n.e : '');
+}
+function renderSel() {
+  const n = S.sel, box = $('#sel');
+  box.replaceChildren();
+  if (!n) return;
+  const kind = el('div', 'kind'); const sw = el('i'); sw.style.background = n.t === 1 ? 'var(--accent)' : colorOf(n); kind.append(sw, kindLabel(n));
+  box.append(kind, el('div', 'name', n === S.view ? tild(S.path) : n.n), el('div', 'size', fmt(n.s)));
+  const meta = [];
+  if (n !== S.view && S.view) meta.push(fmtPct(pct(n.s, S.view.s)) + ' of this folder');
+  if (S.total) meta.push(fmtPct(pct(n.s, S.total)) + ' of scan');
+  if (n.t !== 0 && n.f) meta.push(num(n.f) + ' files');
+  if (n.x) meta.push('some contents unreadable');
+  box.append(el('div', 'meta', meta.join(' · ')));
+  if (n.t <= 1 && n !== S.view) box.append(el('div', 'path', tild(pathOf(n))));
+  if (n.t === 2) box.append(el('div', 'path', `Files under ${fmt(S.info?.keepMin || 262144)} are grouped to keep scans fast. Use -min-file to change.`));
+
+  const acts = el('div', 'actions');
+  const add = (label, fn, cls = 'btn') => { const b = el('button', cls, label); b.onclick = fn; acts.append(b); return b; };
+  if (isDir(n) && n !== S.view && actionable(n)) add('Open folder ↵', () => go(n.i));
+  if (n.t <= 1) add('Copy path', () => copy(pathOf(n)));
+  if (LIVE && actionable(n)) {
+    add('Reveal in Finder', () => act('reveal', n));
+    if (n.t === 0) add('Open', () => act('open', n));
+    if (!isScanRoot(n)) add('Move to Trash', () => trash(n), 'btn danger');
+  }
+  if (acts.children.length) box.append(acts);
+}
+
+function renderList() {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
+  const list = $('#list');
+  list.replaceChildren();
+  if (!S.view) return;
+  if (S.tab === 'contents') return listRows(S.view.k || [], S.view.s, false);
+  if (S.tab === 'top') {
+    if (S.top) return listRows(S.top, S.top[0]?.s || 1, true);
+    list.append(el('div', 'empty', 'Loading…'));
+    api.top(S.view.i).then(t => { S.top = t.map(x => ({ ...x, t: 0 })); if (S.tab === 'top') renderList(); }).catch(e => toast(e.message, true));
+    return;
+  }
+  if (S.tab === 'types') {
+    if (S.types) return renderTypes();
+    api.types().then(t => { S.types = t; if (S.tab === 'types') renderList(); });
+  }
+}
+
+function listRows(items, max, showPath) {
+  const list = $('#list');
+  if (!items.length) { list.append(el('div', 'empty', showPath ? 'No large files here.' : 'Empty folder.')); return; }
+  const frag = document.createDocumentFragment();
+  for (const n of items.slice(0, 600)) {
+    const row = el('div', 'row' + (n === S.sel ? ' on' : ''));
+    row._n = n;
+    const sw = el('i'); sw.style.background = n.t === 1 ? 'var(--accent)' : colorOf(n);
+    row.append(sw, el('div', 'nm', n.n + (n.t === 1 ? '/' : '')), el('div', 'sz', fmt(n.s)));
+    if (showPath) row.append(el('div', 'sub', '‎' + tild(n.p)));
+    const bar = el('div', 'bar'), b = el('b');
+    b.style.width = Math.max(pct(n.s, max), .5) + '%'; b.style.background = n.t === 1 ? 'var(--accent)' : colorOf(n);
+    bar.append(b); row.append(bar);
+    row.onclick = () => select(n);
+    row.ondblclick = () => { if (isDir(n) && actionable(n)) go(n.i); };
+    row.oncontextmenu = e => { e.preventDefault(); select(n); showMenu(n, e.clientX, e.clientY); };
+    frag.append(row);
+  }
+  list.append(frag);
+}
+
+function renderTypes() {
+  const list = $('#list'), types = S.types || [];
+  const total = types.reduce((a, t) => a + t.s, 0) || 1;
+  const cats = new Map();
+  for (const t of types) { const c = catOf(t.e); const v = cats.get(c) || { s: 0, c: 0 }; v.s += t.s; v.c += t.c; cats.set(c, v); }
+  const sorted = [...cats.entries()].sort((a, b) => b[1].s - a[1].s);
+  const stack = el('div', 'stack');
+  for (const [c, v] of sorted) { const seg = el('b'); seg.style.cssText = `flex:${v.s};background:${c.color}`; seg.title = c.label + ' ' + fmt(v.s); stack.append(seg); }
+  list.append(el('div', 'section', 'By category · whole scan'), stack);
+  for (const [c, v] of sorted) {
+    const row = el('div', 'row'), sw = el('i'); sw.style.background = c.color;
+    row.append(sw, el('div', 'nm', c.label), el('div', 'sz', `${fmt(v.s)} · ${fmtPct(pct(v.s, total))}`));
+    row.append(el('div', 'sub', '‎' + num(v.c) + ' files'));
+    list.append(row);
+  }
+  list.append(el('div', 'section', 'By extension'));
+  for (const t of types.slice(0, 60)) {
+    const row = el('div', 'row'), sw = el('i'), c = catOf(t.e); sw.style.background = c.color;
+    row.append(sw, el('div', 'nm', t.e ? '.' + t.e : '(no extension)'), el('div', 'sz', fmt(t.s)));
+    const bar = el('div', 'bar'), b = el('b'); b.style.width = Math.max(pct(t.s, types[0].s), .5) + '%'; b.style.background = c.color; bar.append(b);
+    row.append(el('div', 'sub', '‎' + num(t.c) + ' files · ' + c.label), bar);
+    list.append(row);
+  }
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; renderList(); });
+
+function renderCrumbs() {
+  const nav = $('#crumbs'); nav.replaceChildren();
+  S.crumbs.forEach((c, i) => {
+    if (i) nav.append(el('span', null, '›'));
+    const label = i ? c.n : tild(c.n);
+    const b = el('button', null, label); b.title = label;
+    b.onclick = () => { if (i < S.crumbs.length - 1) go(c.i); };
+    nav.append(b);
+  });
+  $('#upBtn').disabled = S.crumbs.length < 2;
+}
+
+function renderInfo(info, freed) {
+  S.info = info;
+  const disk = $('#disk'); disk.replaceChildren();
+  if (info && info.diskTotal) {
+    const used = info.diskTotal - info.diskFree;
+    disk.append(el('div', null, `${fmt(info.diskFree)} free of ${fmt(info.diskTotal)}`));
+    const m = el('div', 'meter'), b = el('b'); b.style.width = pct(used, info.diskTotal) + '%'; m.append(b); disk.append(m);
+  }
+  $('#freed').textContent = freed ? `Freed ${fmt(freed)}` : '';
+  if (!LIVE && info) {
+    const badge = el('span', 'report-badge', `Report · ${new Date(info.scannedAt).toLocaleString()}`);
+    $('#toolbar').prepend(badge);
+  }
+}
+
+// ---------- actions ----------
+const menu = $('#menu');
+function showMenu(n, x, y) {
+  menu.replaceChildren();
+  const item = (label, key, fn, cls) => { const b = el('button', cls); b.append(label); if (key) b.append(el('kbd', null, key)); b.onclick = () => { hideMenu(); fn(); }; menu.append(b); };
+  if (isDir(n) && n !== S.view && actionable(n)) item('Open folder', '↵', () => go(n.i));
+  if (S.crumbs.length > 1) item('Go up', '⌫', goUp);
+  if (n.t <= 1) item('Copy path', '', () => copy(pathOf(n)));
+  if (LIVE && actionable(n)) {
+    item('Reveal in Finder', '', () => act('reveal', n));
+    item('Open', '', () => act('open', n));
+    if (isDir(n)) item('Rescan', '', () => rescan(n));
+    if (!isScanRoot(n)) { menu.append(el('hr')); item('Move to Trash…', '⌦', () => trash(n), 'danger'); }
+  }
+  if (!menu.children.length) return;
+  menu.style.display = 'block';
+  menu.style.left = Math.min(x, innerWidth - menu.offsetWidth - 8) + 'px';
+  menu.style.top = Math.min(y, innerHeight - menu.offsetHeight - 8) + 'px';
+}
+function hideMenu() { menu.style.display = 'none'; }
+addEventListener('mousedown', e => { if (!menu.contains(e.target)) hideMenu(); });
+
+async function act(op, n) {
+  try { await api.action(op, n.i); } catch (e) { toast(e.message, true); }
+}
+async function copy(text, msg = 'Path copied') {
+  try { await navigator.clipboard.writeText(text); }
+  catch { const t = el('textarea'); t.value = text; document.body.append(t); t.select(); document.execCommand('copy'); t.remove(); }
+  toast(msg);
+}
+
+function confirmTrash(n) { return confirmDlg('Move to Trash?', `${n.n} — ${fmt(n.s)}`, tild(pathOf(n))); }
+function confirmDlg(title, what, det) {
+  return new Promise(res => {
+    $('#mTitle').textContent = title;
+    $('#mWhat').textContent = what;
+    $('#mDet').textContent = det;
+    const m = $('#modal'); m.style.display = 'grid';
+    const done = v => { m.style.display = 'none'; removeEventListener('keydown', key, true); res(v); };
+    const key = e => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } if (e.key === 'Enter') { e.stopPropagation(); done(true); } };
+    addEventListener('keydown', key, true);
+    $('#mNo').onclick = () => done(false);
+    $('#mYes').onclick = () => done(true);
+    $('#mYes').focus();
+  });
+}
+async function trash(n) {
+  if (!LIVE || !actionable(n) || isScanRoot(n)) return;
+  if (!(await confirmTrash(n))) return;
+  try {
+    const r = await api.action('trash', n.i);
+    toast(`Moved “${n.n}” to Trash · freed ${fmt(r.freed || n.s)}`);
+    const ci = S.crumbs.findIndex(c => c.i === n.i);
+    await go(ci > 0 ? S.crumbs[ci - 1].i : S.view.i);
+    C.items = null;
+    refreshStatus();
+  } catch (e) { toast('Could not move to Trash: ' + e.message, true); }
+}
+async function rescan(n) {
+  if (!LIVE) return;
+  const target = n || S.view;
+  const btn = $('#rescanBtn'); btn.disabled = true; btn.textContent = '↻ Scanning…';
+  try {
+    const r = await api.action('rescan', target.i);
+    if (target === S.view) await go(r.id); else await go(S.view.i, S.sel && S.sel.i);
+    C.items = null;
+    refreshStatus(); toast('Rescanned ' + target.n);
+  } catch (e) { toast(e.message, true); }
+  btn.disabled = false; btn.textContent = '↻ Rescan';
+}
+
+// ---------- clean-up suggestions ----------
+const SAFETY = [
+  { k: 'safe', label: 'Safe to delete', sub: 'Caches and build output. Recreated automatically.', color: 'var(--ok)' },
+  { k: 'rebuild', label: 'Rebuildable', sub: 'Recreated by reinstalling, rebuilding or re-downloading. Costs time, not data.', color: 'var(--accent)' },
+  { k: 'review', label: 'Review first', sub: 'May hold things you want. Look before deleting.', color: '#d6a62a' },
+];
+const C = { open: false, items: null, sel: new Set(), expanded: new Set() };
+const sum = xs => xs.reduce((a, x) => a + x.s, 0);
+const canTrash = it => LIVE && !it.noTrash;
+function ago(t) {
+  if (!t) return '';
+  const d = (Date.now() / 1000 - t) / 86400;
+  if (d < 1) return 'today';
+  if (d < 45) return Math.round(d) + 'd ago';
+  if (d < 540) return Math.round(d / 30) + ' mo ago';
+  return (d / 365).toFixed(1) + ' yr ago';
+}
+
+async function openClean() {
+  C.open = true; $('#clean').style.display = 'flex'; $('#cleanBtn').classList.add('on');
+  tip.style.display = 'none';
+  if (C.items) return renderClean();
+  $('#clBody').replaceChildren(el('div', 'empty', 'Looking for caches and build folders…'));
+  try {
+    const r = await api.suggest();
+    C.items = r.items || [];
+    const ids = new Set(C.items.map(i => i.i));
+    C.sel = new Set([...C.sel].filter(id => ids.has(id)));
+    renderClean();
+  } catch (e) { toast(e.message, true); }
+}
+function closeClean() { C.open = false; $('#clean').style.display = 'none'; $('#cleanBtn').classList.remove('on'); }
+
+function groupsOf(level) {
+  const map = new Map();
+  for (const it of C.items) {
+    if (it.safety !== level) continue;
+    let g = map.get(it.title);
+    if (!g) map.set(it.title, g = { key: level + '|' + it.title, title: it.title, why: it.why, cmd: it.cmd, items: [] });
+    g.items.push(it);
+  }
+  return [...map.values()].map(g => ({ ...g, s: sum(g.items) })).sort((a, b) => b.s - a.s);
+}
+
+function renderClean() {
+  const body = $('#clBody'), items = C.items || [];
+  const scroll = body.scrollTop;
+  body.replaceChildren();
+  const root = S.crumbs[0]?.n || '';
+  body.append(el('h2', 'cl-title', 'Clean-up suggestions'));
+  body.append(el('div', 'cl-sub', items.length
+    ? `Up to ${fmt(sum(items))} can be freed in ${tild(root)}. Nothing is deleted until you confirm.`
+    : `Nothing obvious to clean in ${tild(root)}.`));
+
+  const chips = el('div', 'chips');
+  for (const lv of SAFETY) {
+    const its = items.filter(i => i.safety === lv.k);
+    if (!its.length) continue;
+    const c = el('button', 'chip'), lab = el('span'), dot = el('i', 'dot');
+    dot.style.background = lv.color; lab.append(dot, lv.label + ` · ${its.length}`);
+    c.append(el('b', null, fmt(sum(its))), lab);
+    c.onclick = () => document.getElementById('sec-' + lv.k)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    chips.append(c);
+  }
+  body.append(chips);
+  if (root !== HOME && root !== '/') body.append(el('div', 'cl-note', 'Only this folder was checked. Scan your home folder (tpdv ~) to also find app caches, Xcode data and package-manager caches.'));
+
+  for (const lv of SAFETY) {
+    const groups = groupsOf(lv.k);
+    if (!groups.length) continue;
+    const sec = el('section', 'cl-sec'); sec.id = 'sec-' + lv.k;
+    const h = el('h3'), dot = el('i', 'dot'); dot.style.background = lv.color;
+    h.append(dot, lv.label, el('small', null, fmt(sum(groups))));
+    sec.append(h, el('p', null, lv.sub));
+    for (const g of groups) sec.append(groupCard(g));
+    body.append(sec);
+  }
+  body.scrollTop = scroll;
+  renderCleanBar();
+}
+
+function groupCard(g) {
+  const open = C.expanded.has(g.key);
+  const card = el('div', 'grp' + (open ? ' open' : ''));
+  const head = el('div', 'grp-h');
+  const trashable = g.items.filter(canTrash);
+  if (trashable.length) {
+    const cb = el('input'); cb.type = 'checkbox';
+    const n = trashable.filter(i => C.sel.has(i.i)).length;
+    cb.checked = n === trashable.length; cb.indeterminate = n > 0 && n < trashable.length;
+    cb.onclick = e => { e.stopPropagation(); for (const i of trashable) cb.checked ? C.sel.add(i.i) : C.sel.delete(i.i); renderClean(); };
+    head.append(cb);
+  } else head.append(el('span'));
+  const t = el('div', 't', g.title); if (g.items.length > 1) t.append(el('small', null, `${g.items.length} folders`));
+  head.append(t, el('div', 'sz', fmt(g.s)), el('div', 'chev', '›'));
+  head.onclick = () => { open ? C.expanded.delete(g.key) : C.expanded.add(g.key); renderClean(); };
+  card.append(head);
+
+  const why = el('div', 'grp-why', g.why);
+  if (g.cmd) {
+    const cmd = el('div', 'cmd'); const cp = el('button', 'lnk', 'Copy');
+    cp.onclick = () => copy(g.cmd, 'Command copied');
+    cmd.append(el('span', null, g.cmd), cp);
+    why.append(el('br'), cmd);
+  }
+  card.append(why);
+  if (!open) return card;
+
+  const list = el('div', 'items');
+  for (const it of g.items.slice(0, 300)) list.append(itemRow(it));
+  if (g.items.length > 300) list.append(el('div', 'more cl-note', `… ${g.items.length - 300} more (select the group to include them all)`));
+  card.append(list);
+  return card;
+}
+
+function itemRow(it) {
+  const row = el('div', 'it');
+  if (canTrash(it)) {
+    const cb = el('input'); cb.type = 'checkbox'; cb.checked = C.sel.has(it.i);
+    cb.onchange = () => { cb.checked ? C.sel.add(it.i) : C.sel.delete(it.i); renderClean(); };
+    row.append(cb);
+  } else row.append(el('span', LIVE ? 'tag' : null, LIVE ? 'cmd' : ''));
+  if (LIVE && it.noTrash) row.title = 'Clean this with the command above, not the Trash';
+  row.append(el('div', 'pth', '‎' + tild(it.p)));
+  const meta = el('div', 'm'); meta.append(el('b', null, fmt(it.s)));
+  const extra = [it.d && it.f ? num(it.f) + ' files' : '', it.mtime ? 'project ' + ago(it.mtime) : ''].filter(Boolean).join(' · ');
+  if (extra) meta.append(' · ' + extra);
+  row.append(meta);
+  const acts = el('div', 'acts');
+  const mapBtn = el('button', 'lnk', 'Show'); mapBtn.title = 'Show in the treemap';
+  mapBtn.onclick = async () => { closeClean(); await go(it.pi >= 0 ? it.pi : it.i, it.i); };
+  acts.append(mapBtn);
+  if (LIVE) { const rv = el('button', 'lnk', 'Reveal'); rv.onclick = () => act('reveal', { i: it.i }); acts.append(rv); }
+  row.append(acts);
+  return row;
+}
+
+function renderCleanBar() {
+  const bar = $('#clBar'); bar.replaceChildren();
+  if (!LIVE) { bar.append(el('div', 'cnt', 'Read-only report. Run tpdv on this Mac to clean up.')); return; }
+  const chosen = (C.items || []).filter(i => C.sel.has(i.i));
+  const cnt = el('div', 'cnt');
+  if (chosen.length) cnt.append(el('b', null, `${chosen.length} selected`), ` · ${fmt(sum(chosen))}`);
+  else cnt.append('Select folders to move them to the Trash. You can restore them with Put Back.');
+  const safe = el('button', 'btn', 'Select all safe');
+  safe.onclick = () => { for (const i of C.items) if (i.safety === 'safe' && canTrash(i)) C.sel.add(i.i); renderClean(); };
+  const clear = el('button', 'btn', 'Clear'); clear.disabled = !chosen.length;
+  clear.onclick = () => { C.sel.clear(); renderClean(); };
+  const go_ = el('button', 'btn solid-danger', 'Move to Trash…'); go_.disabled = !chosen.length;
+  go_.onclick = () => trashSelected(chosen);
+  const back = el('button', 'btn', 'Back to treemap'); back.onclick = closeClean;
+  bar.append(cnt, back, safe, clear, go_);
+}
+
+async function trashSelected(chosen) {
+  const list = chosen.slice(0, 6).map(i => '• ' + tild(i.p)).join('\n') + (chosen.length > 6 ? `\n… and ${chosen.length - 6} more` : '');
+  if (!(await confirmDlg(`Move ${chosen.length} item${chosen.length > 1 ? 's' : ''} to Trash?`, `${fmt(sum(chosen))} will be freed`, list))) return;
+  try {
+    const r = await api.trashMany(chosen.map(i => i.i));
+    if (r.failed && r.failed.length) toast(`Moved ${r.trashed}, ${r.failed.length} failed: ${tild(r.failed[0].p)} — ${r.failed[0].error}`, true);
+    else toast(`Moved ${r.trashed} items to Trash · freed ${fmt(r.freed)}`);
+    C.sel.clear(); C.items = null;
+    if (!(await go(S.view.i))) await go(null);
+    refreshStatus();
+    if (C.open) openClean();
+  } catch (e) { toast('Could not move to Trash: ' + e.message, true); }
+}
+$('#cleanBtn').onclick = () => C.open ? closeClean() : openClean();
+
+let toastTimer;
+function toast(msg, err) {
+  const t = $('#toast'); t.textContent = msg; t.className = err ? 'err' : ''; t.style.display = 'block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', err ? 6000 : 3000);
+}
+
+$('#upBtn').onclick = goUp;
+$('#rescanBtn').onclick = () => rescan();
+$('#reportBtn').onclick = () => { location.href = '/api/report?t=' + encodeURIComponent(CFG.token); };
+if (!LIVE) document.querySelectorAll('.live').forEach(b => b.remove());
+
+addEventListener('keydown', e => {
+  if ($('#modal').style.display === 'grid' || e.target.tagName === 'INPUT') return;
+  if (C.open) { if (e.key === 'Escape') closeClean(); return; }
+  if (e.key === 'Escape') { hideMenu(); if (S.sel !== S.view) select(S.view); return; }
+  if (e.key === 'Backspace' && !e.metaKey) { e.preventDefault(); goUp(); }
+  if (e.key === 'Enter' && isDir(S.sel) && S.sel !== S.view && actionable(S.sel)) go(S.sel.i);
+  if ((e.key === 'Delete' || (e.key === 'Backspace' && e.metaKey)) && S.sel && S.sel !== S.view) { e.preventDefault(); trash(S.sel); }
+});
+
+// ---------- boot ----------
+async function refreshStatus() {
+  try { const s = await api.status(); renderInfo(s.info, s.freed); } catch {}
+}
+// loaded shows the scan root; #clean in the URL opens the Clean up view.
+async function loaded() {
+  await go(null);
+  if (location.hash === '#clean') openClean();
+}
+async function boot() {
+  if (!LIVE) {
+    if (!CFG.data) { $('#list').append(el('div', 'empty', 'No data.')); return; }
+    renderInfo(CFG.data.info, 0);
+    return loaded();
+  }
+  const scanBox = $('#scan');
+  let shown = false;
+  for (;;) {
+    let s;
+    try { s = await api.status(); } catch (e) { $('#scanTitle').textContent = 'Lost connection to tpdv'; $('#scanCur').textContent = e.message; scanBox.style.display = 'grid'; return; }
+    if (s.error) { $('#scanTitle').textContent = 'Scan failed'; $('#scanCur').textContent = s.error; scanBox.style.display = 'grid'; return; }
+    if (!s.scanning) { scanBox.style.display = 'none'; renderInfo(s.info, s.freed); return loaded(); }
+    if (!shown) { scanBox.style.display = 'grid'; shown = true; }
+    const p = s.progress || {};
+    $('#scanFiles').textContent = num(p.files || 0);
+    $('#scanBytes').textContent = fmt(p.bytes || 0);
+    $('#scanRate').textContent = p.elapsedMs ? num(p.files / (p.elapsedMs / 1000)) : '0';
+    $('#scanCur').textContent = '‎' + tild(p.current || '');
+    await new Promise(r => setTimeout(r, 250));
+  }
+}
+boot();
+})();
+</script>
+</body>
+</html>
