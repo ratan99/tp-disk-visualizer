@@ -1,0 +1,14 @@
+# build output
+/bin/
+/dist/
+
+# reports written by `tpdv report`
+tpdv-report-*.html
+
+# local editor / agent config
+/.claude/
+.vscode/
+.idea/
+
+# OS junk
+.DS_Store
